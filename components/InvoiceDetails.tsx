@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Invoice, InvoiceStatus, MilestoneStatus } from '../types';
 import { generateClientMessage } from '../services/geminiService';
 
@@ -14,17 +14,19 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice, onBack, onUpda
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [requestSent, setRequestSent] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (invoice && !aiMessage) {
-      setLoadingMsg(true);
-      generateClientMessage(invoice).then(msg => {
-        setAiMessage(msg);
-        setLoadingMsg(false);
-      });
-    }
-  }, [invoice]);
-
   if (!invoice) return null;
+
+  const handleGenerateMessage = async () => {
+    setLoadingMsg(true);
+    try {
+      const msg = await generateClientMessage(invoice);
+      setAiMessage(msg);
+    } catch (err) {
+      console.error("Failed to generate AI message", err);
+    } finally {
+      setLoadingMsg(false);
+    }
+  };
 
   const handleRequestApproval = (msId: string) => {
     setRequestSent(msId);
@@ -236,10 +238,14 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice, onBack, onUpda
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">AI Smart Message</label>
                   <span className="text-[8px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded tracking-tighter">GEN AI</span>
                 </div>
-                <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-[32px] relative transition-all hover:bg-blue-50">
+                
+                <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-[32px] relative transition-all min-h-[140px] flex items-center justify-center">
                   {loadingMsg ? (
-                    <div className="flex items-center justify-center py-12 text-blue-400"><i className="fa-solid fa-spinner fa-spin text-2xl"></i></div>
-                  ) : (
+                    <div className="flex flex-col items-center gap-3 py-12 text-blue-400">
+                      <i className="fa-solid fa-spinner fa-spin text-2xl"></i>
+                      <span className="text-[10px] font-black uppercase tracking-widest">Analyzing Context...</span>
+                    </div>
+                  ) : aiMessage ? (
                     <>
                       <p className="text-xs text-slate-600 leading-relaxed font-medium italic pr-6">{aiMessage}</p>
                       <button 
@@ -249,14 +255,27 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice, onBack, onUpda
                         <i className="fa-solid fa-copy"></i>
                       </button>
                     </>
+                  ) : (
+                    <div className="text-center space-y-4">
+                      <p className="text-[11px] text-slate-400 font-medium">Generate a professional outreach message personalized for this client.</p>
+                      <button 
+                        onClick={handleGenerateMessage}
+                        className="px-6 py-2.5 bg-blue-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 flex items-center gap-2 mx-auto"
+                      >
+                        <i className="fa-solid fa-wand-magic-sparkles"></i> Generate with AI
+                      </button>
+                    </div>
                   )}
                 </div>
-                <button 
-                  onClick={() => window.open(`mailto:${invoice.client_email || ''}?subject=Invoice: ${invoice.title}&body=${encodeURIComponent(aiMessage)}`)}
-                  className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-900/10 active:scale-95 flex items-center justify-center gap-3"
-                >
-                  <i className="fa-solid fa-envelope"></i> Send via Email
-                </button>
+
+                {aiMessage && (
+                  <button 
+                    onClick={() => window.open(`mailto:${invoice.client_email || ''}?subject=Invoice: ${invoice.title}&body=${encodeURIComponent(aiMessage)}`)}
+                    className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-900/10 active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    <i className="fa-solid fa-envelope"></i> Send via Email
+                  </button>
+                )}
               </div>
             </div>
           </div>
