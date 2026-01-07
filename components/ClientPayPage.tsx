@@ -14,6 +14,7 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
   const [selectedMilestone, setSelectedMilestone] = useState<Milestone | null>(null);
   const [txStep, setTxStep] = useState<'idle' | 'approving' | 'confirming' | 'success'>('idle');
   const [isApprovingMode, setIsApprovingMode] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   if (!invoice) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
@@ -28,9 +29,18 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
     </div>
   );
 
+  const handleWalletConnect = () => {
+    setIsConnecting(true);
+    // Simulate wallet connection inline
+    setTimeout(() => {
+      onConnect();
+      setIsConnecting(false);
+    }, 1200);
+  };
+
   const handleActionClick = (ms: Milestone, mode: 'pay' | 'approve') => {
     if (!walletConnected) {
-      onConnect();
+      handleWalletConnect();
       return;
     }
     setSelectedMilestone(ms);
@@ -197,14 +207,19 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
         <div className="flex flex-col items-center gap-4 py-6">
           {!walletConnected ? (
             <button 
-              onClick={onConnect}
-              className="w-full max-w-sm py-5 bg-blue-600 text-white text-lg font-black rounded-2xl shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all transform hover:scale-[1.02]"
+              onClick={handleWalletConnect}
+              disabled={isConnecting}
+              className="w-full max-w-sm py-5 bg-blue-600 text-white text-lg font-black rounded-2xl shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all transform hover:scale-[1.02] disabled:opacity-70 active:scale-95"
             >
-              <i className="fa-solid fa-wallet"></i>
-              Connect Wallet to Pay
+              {isConnecting ? (
+                <i className="fa-solid fa-spinner fa-spin"></i>
+              ) : (
+                <i className="fa-solid fa-wallet"></i>
+              )}
+              {isConnecting ? 'Opening Wallet...' : 'Connect Wallet to Pay'}
             </button>
           ) : (
-            <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-3 animate-in zoom-in duration-300">
               <div className="flex items-center gap-3 px-6 py-2 bg-green-50 text-green-700 rounded-full border border-green-100 text-sm font-bold shadow-sm">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 Connected: 0x7f8...9a2b

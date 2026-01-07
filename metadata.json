@@ -1,5 +1,5 @@
 {
-  "name": "PayFlow",
+  "name": "PayFlow v2",
   "description": "An AI-powered invoice and escrow payment platform using MNEE stablecoin that protects freelancers and clients from payment disputes.",
   "requestFramePermissions": [
     "camera"

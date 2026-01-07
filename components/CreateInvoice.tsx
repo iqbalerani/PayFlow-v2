@@ -15,6 +15,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
   const [preview, setPreview] = useState<Partial<Invoice> | null>(null);
   const [success, setSuccess] = useState<Invoice | null>(null);
   const [aiMessage, setAiMessage] = useState('');
+  const [generatingMsg, setGeneratingMsg] = useState(false);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -33,13 +34,23 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
     if (preview) {
       const fullInvoice = preview as Invoice;
       onCreated(fullInvoice);
-      const msg = await generateClientMessage(fullInvoice);
-      setAiMessage(msg);
       setSuccess(fullInvoice);
       setPreview(null);
     }
   };
 
+  const handleGenerateMsg = async () => {
+    if (!success) return;
+    setGeneratingMsg(true);
+    try {
+      const msg = await generateClientMessage(success);
+      setAiMessage(msg);
+    } catch (err) {
+      console.error("Failed to generate msg", err);
+    } finally {
+      setGeneratingMsg(false);
+    }
+  };
   if (success) {
     const publicLink = `https://payflow.ai/#pay/${success.id}`;
     return (
@@ -62,15 +73,37 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
           </div>
 
           <div className="pt-4 border-t border-slate-100">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">AI-Generated Client Message</label>
-            <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl relative">
-              <p className="text-sm text-slate-700 italic leading-relaxed">{aiMessage}</p>
-              <button 
-                onClick={() => navigator.clipboard.writeText(aiMessage)}
-                className="mt-4 flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800"
-              >
-                <i className="fa-solid fa-copy"></i> Copy Message
-              </button>
+            <div className="flex items-center justify-between mb-4">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">AI-Generated Client Message</label>
+              <span className="text-[8px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded">GEN AI</span>
+            </div>
+            
+            <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl relative min-h-[100px] flex items-center justify-center">
+              {generatingMsg ? (
+                <div className="flex flex-col items-center gap-2 py-4 text-blue-500">
+                  <i className="fa-solid fa-spinner fa-spin"></i>
+                  <span className="text-[9px] font-black uppercase tracking-widest">Drafting message...</span>
+                </div>
+              ) : aiMessage ? (
+                <div>
+                  <p className="text-sm text-slate-700 italic leading-relaxed">{aiMessage}</p>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(aiMessage)}
+                    className="mt-4 flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800"
+                  >
+                    <i className="fa-solid fa-copy"></i> Copy Message
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <button 
+                    onClick={handleGenerateMsg}
+                    className="px-6 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 flex items-center gap-2"
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles"></i> Generate Message with AI
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -183,7 +183,7 @@ const App: React.FC = () => {
         <ClientPayPage 
           invoice={invoice} 
           walletConnected={!!state.walletAddress}
-          onConnect={() => navigate('auth')}
+          onConnect={() => connectWallet('client')} // Inline connection now
           onPay={(msId) => updateMilestone(state.selectedInvoiceId!, msId, MilestoneStatus.PAID)}
           onApprove={(msId) => updateMilestone(state.selectedInvoiceId!, msId, MilestoneStatus.RELEASED)}
         />
