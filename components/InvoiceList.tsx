@@ -1,14 +1,19 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Invoice, InvoiceStatus, AppView } from '../types';
+import { useInvoiceStore } from '../src/store/invoiceStore';
 
 interface InvoiceListProps {
-  invoices: Invoice[];
   onNavigate: (view: AppView, id?: string) => void;
 }
 
-const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onNavigate }) => {
+const InvoiceList: React.FC<InvoiceListProps> = ({ onNavigate }) => {
+  const { invoices, isLoading, fetchInvoices } = useInvoiceStore();
   const [filter, setFilter] = useState<string>('all');
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
 
   const filtered = invoices.filter(inv => {
     if (filter === 'all') return true;
@@ -55,8 +60,14 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onNavigate }) => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {filtered.length > 0 ? (
+      {isLoading ? (
+        <div className="py-32 flex flex-col items-center text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Loading invoices...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6">
+          {filtered.length > 0 ? (
           filtered.map((inv) => (
             <div 
               key={inv.id} 
@@ -106,7 +117,8 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onNavigate }) => {
             <p className="text-slate-500 mt-2 font-medium max-w-xs mx-auto">Try changing your filters or use our AI generator to start a new one.</p>
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

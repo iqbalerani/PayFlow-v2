@@ -1,37 +1,44 @@
 
-import React from 'react';
-import { Invoice, MilestoneStatus } from '../types';
+import React, { useState, useEffect } from 'react';
+import { MilestoneStatus } from '../types';
+import paymentService from '../src/services/paymentService';
 
-interface PaymentsViewProps {
-  invoices: Invoice[];
-}
+const PaymentsView: React.FC = () => {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [escrowBalance, setEscrowBalance] = useState<number>(0);
+  const [totalReleased, setTotalReleased] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-const PaymentsView: React.FC<PaymentsViewProps> = ({ invoices }) => {
-  const inEscrow = invoices.reduce((acc, inv) => {
-    return acc + inv.milestones
-      .filter(m => m.status === MilestoneStatus.PAID)
-      .reduce((sum, m) => sum + m.amount, 0);
-  }, 0);
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const [txData, escrowData] = await Promise.all([
+          paymentService.getTransactions(1, 50),
+          paymentService.getEscrowBalance()
+        ]);
 
-  const totalReleased = invoices.reduce((acc, inv) => {
-    return acc + inv.milestones
-      .filter(m => m.status === MilestoneStatus.RELEASED)
-      .reduce((sum, m) => sum + m.amount, 0);
-  }, 0);
+        setTransactions(txData.transactions);
+        setEscrowBalance(parseFloat(escrowData.balance) || 0);
+        setTotalReleased(parseFloat(escrowData.totalReleased) || 0);
+      } catch (error) {
+        console.error('Error fetching payment data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const transactions = invoices.flatMap(inv => 
-    inv.milestones
-      .filter(m => m.status !== MilestoneStatus.PENDING)
-      .map(m => ({
-        id: m.id,
-        invoiceId: inv.id,
-        title: `${inv.title} - ${m.title}`,
-        client: inv.client_name,
-        amount: m.amount,
-        status: m.status,
-        date: m.released_at || m.paid_at || inv.created_at
-      }))
-  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    fetchData();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="py-32 flex flex-col items-center text-center">
+        <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
+        <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Loading payments...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -46,7 +53,7 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ invoices }) => {
         <div className="bg-slate-900 rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20">
           <div className="relative z-10">
             <p className="text-slate-500 text-[10px] font-black mb-2 uppercase tracking-[0.2em]">Locked in Escrow</p>
-            <h3 className="text-4xl font-black tracking-tight">{inEscrow.toLocaleString()} <span className="text-lg font-bold text-slate-600">MNEE</span></h3>
+            <h3 className="text-4xl font-black tracking-tight">{escrowBalance.toLocaleString()} <span className="text-lg font-bold text-slate-600">USD</span></h3>
             <div className="mt-6 flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full w-fit">
               <i className="fa-solid fa-shield-halved text-blue-500 text-[10px]"></i>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Secured Protocol</span>
@@ -57,15 +64,15 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ invoices }) => {
 
         <div className="bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm relative overflow-hidden">
           <p className="text-slate-400 text-[10px] font-black mb-2 uppercase tracking-[0.2em]">Total Released</p>
-          <h3 className="text-4xl font-black text-slate-900 tracking-tight">{totalReleased.toLocaleString()} <span className="text-lg font-bold text-slate-200">MNEE</span></h3>
+          <h3 className="text-4xl font-black text-slate-900 tracking-tight">{totalReleased.toLocaleString()} <span className="text-lg font-bold text-slate-200">USD</span></h3>
           <div className="w-full h-2 bg-slate-100 rounded-full mt-10 overflow-hidden">
-            <div 
-              className="h-full bg-blue-600 transition-all duration-1000" 
-              style={{ width: `${(totalReleased / (totalReleased + inEscrow || 1)) * 100}%` }}
+            <div
+              className="h-full bg-blue-600 transition-all duration-1000"
+              style={{ width: `${(totalReleased / (totalReleased + escrowBalance || 1)) * 100}%` }}
             ></div>
           </div>
           <p className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest">
-            Settlement Progress: {Math.round((totalReleased / (totalReleased + inEscrow || 1)) * 100)}%
+            Settlement Progress: {Math.round((totalReleased / (totalReleased + escrowBalance || 1)) * 100)}%
           </p>
         </div>
       </div>
@@ -102,32 +109,34 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ invoices }) => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {transactions.map((tx, i) => (
-                <tr key={i} className="hover:bg-slate-50/80 transition-colors group cursor-default">
+                <tr key={tx.id || i} className="hover:bg-slate-50/80 transition-colors group cursor-default">
                   <td className="px-8 py-6">
-                    <p className="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors">{tx.title}</p>
+                    <p className="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors">{tx.invoice?.title || 'Transaction'}</p>
                     <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-1">{tx.invoiceId}</p>
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 font-black">
-                        {tx.client.charAt(0)}
+                        {(tx.invoice?.clientName || 'C').charAt(0)}
                       </div>
-                      <span className="text-sm text-slate-600 font-bold">{tx.client}</span>
+                      <span className="text-sm text-slate-600 font-bold">{tx.invoice?.clientName || 'Client'}</span>
                     </div>
                   </td>
                   <td className="px-8 py-6">
                     <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${
-                      tx.status === MilestoneStatus.RELEASED 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-blue-100 text-blue-700'
+                      tx.type === 'RELEASE'
+                        ? 'bg-green-100 text-green-700'
+                        : tx.type === 'DEPOSIT'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-amber-100 text-amber-700'
                     }`}>
-                      {tx.status}
+                      {tx.type}
                     </span>
                   </td>
-                  <td className="px-8 py-6 text-xs text-slate-400 font-bold">{new Date(tx.date).toLocaleDateString()}</td>
+                  <td className="px-8 py-6 text-xs text-slate-400 font-bold">{new Date(tx.createdAt).toLocaleDateString()}</td>
                   <td className="px-8 py-6 text-right">
-                    <span className="font-black text-slate-900">+{tx.amount}</span>
-                    <span className="text-[10px] text-slate-400 font-bold ml-1 tracking-tighter">MNEE</span>
+                    <span className="font-black text-slate-900">{tx.type === 'RELEASE' ? '+' : ''}{parseFloat(tx.amount.toString()).toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-400 font-bold ml-1 tracking-tighter">USD</span>
                   </td>
                 </tr>
               ))}

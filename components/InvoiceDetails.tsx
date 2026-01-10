@@ -1,45 +1,90 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Invoice, InvoiceStatus, MilestoneStatus } from '../types';
-import { generateClientMessage } from '../services/geminiService';
+import aiService from '../src/services/aiService';
+import { useInvoiceStore } from '../src/store/invoiceStore';
+import { useUIStore } from '../src/store/uiStore';
 
 interface InvoiceDetailsProps {
-  invoice?: Invoice;
+  invoiceId: string;
   onBack: () => void;
-  onUpdateMilestone: (invoiceId: string, milestoneId: string, status: MilestoneStatus) => void;
 }
 
-const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice, onBack, onUpdateMilestone }) => {
+const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) => {
+  const { currentInvoice: invoice, fetchInvoiceById, updateMilestone, isLoading } = useInvoiceStore();
+  const { showSuccess, showError } = useUIStore();
   const [aiMessage, setAiMessage] = useState<string>('');
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [requestSent, setRequestSent] = useState<string | null>(null);
+  const [paymentRequestSent, setPaymentRequestSent] = useState<string | null>(null);
 
-  if (!invoice) return null;
+  useEffect(() => {
+    fetchInvoiceById(invoiceId);
+  }, [invoiceId, fetchInvoiceById]);
+
+  if (isLoading || !invoice) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Loading invoice...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleGenerateMessage = async () => {
     setLoadingMsg(true);
     try {
-      const msg = await generateClientMessage(invoice);
+      const msg = await aiService.generateMessage(
+        invoice.title,
+        invoice.client_name,
+        invoice.total_amount
+      );
       setAiMessage(msg);
+      showSuccess('AI message generated successfully!');
     } catch (err) {
       console.error("Failed to generate AI message", err);
+      showError('Failed to generate AI message');
     } finally {
       setLoadingMsg(false);
     }
   };
-  const handleRequestApproval = (msId: string) => {
+
+  const handleRequestApproval = async (msId: string, milestoneIndex: number) => {
     setRequestSent(msId);
-    // Simulate API call to send notification
-    setTimeout(() => setRequestSent(null), 3000);
+    try {
+      // In production, this would send a notification/email to the client
+      // The actual release is triggered by the client from ClientPayPage
+      showSuccess('Release request sent to client!');
+      setTimeout(() => setRequestSent(null), 3000);
+    } catch (err) {
+      console.error("Failed to request approval", err);
+      showError('Failed to send release request');
+      setRequestSent(null);
+    }
+  };
+
+  const handleRequestPayment = async (msId: string) => {
+    setPaymentRequestSent(msId);
+    try {
+      // Show success notification - in production this would send email/notification
+      showSuccess('Payment request sent to client!');
+      setTimeout(() => setPaymentRequestSent(null), 3000);
+    } catch (err) {
+      console.error("Failed to send payment request", err);
+      showError('Failed to send payment request');
+      setPaymentRequestSent(null);
+    }
   };
 
   const releasedAmount = invoice.milestones
     .filter(m => m.status === MilestoneStatus.RELEASED)
-    .reduce((sum, m) => sum + m.amount, 0);
-  
+    .reduce((sum, m) => sum + Number(m.amount), 0);
+
   const inEscrowAmount = invoice.milestones
     .filter(m => m.status === MilestoneStatus.PAID)
-    .reduce((sum, m) => sum + m.amount, 0);
+    .reduce((sum, m) => sum + Number(m.amount), 0);
 
   const getPublicLink = () => `${window.location.origin}/#pay/${invoice.id}`;
 
@@ -149,14 +194,28 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice, onBack, onUpda
                         </div>
                         <div className="flex flex-col items-end gap-3 min-w-[120px]">
                           <p className="font-black text-slate-900 text-xl">{ms.amount} <span className="text-xs text-slate-400">{invoice.currency}</span></p>
-                          
-                          {ms.status === MilestoneStatus.PAID && (
-                            <button 
-                              disabled={!!requestSent}
-                              onClick={() => handleRequestApproval(ms.id)}
+
+                          {ms.status === MilestoneStatus.EMPTY && (
+                            <button
+                              disabled={!!paymentRequestSent}
+                              onClick={() => handleRequestPayment(ms.id)}
                               className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest shadow-xl transition-all uppercase active:scale-95 ${
-                                requestSent === ms.id 
-                                  ? 'bg-green-500 text-white border-green-400' 
+                                paymentRequestSent === ms.id
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'
+                              }`}
+                            >
+                              {paymentRequestSent === ms.id ? 'Request Sent ✓' : 'Send Payment Request'}
+                            </button>
+                          )}
+
+                          {ms.status === MilestoneStatus.PAID && (
+                            <button
+                              disabled={!!requestSent}
+                              onClick={() => handleRequestApproval(ms.id, idx)}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest shadow-xl transition-all uppercase active:scale-95 ${
+                                requestSent === ms.id
+                                  ? 'bg-green-500 text-white border-green-400'
                                   : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800 shadow-slate-900/10'
                               }`}
                             >
@@ -187,18 +246,18 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice, onBack, onUpda
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-sm font-bold uppercase tracking-widest">Pending</span>
-                <span className="font-black text-2xl text-slate-500">{invoice.total_amount - releasedAmount - inEscrowAmount} {invoice.currency}</span>
+                <span className="font-black text-2xl text-slate-500">{Number(invoice.total_amount) - releasedAmount - inEscrowAmount} {invoice.currency}</span>
               </div>
               
               <div className="pt-8">
                 <div className="flex justify-between items-center mb-3">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Overall Progress</span>
-                  <span className="text-xs font-black text-blue-400">{Math.round((releasedAmount / (invoice.total_amount || 1)) * 100)}%</span>
+                  <span className="text-xs font-black text-blue-400">{Math.round((releasedAmount / (Number(invoice.total_amount) || 1)) * 100)}%</span>
                 </div>
                 <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-1000 ease-out" 
-                    style={{ width: `${(releasedAmount / (invoice.total_amount || 1)) * 100}%` }}
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-1000 ease-out"
+                    style={{ width: `${(releasedAmount / (Number(invoice.total_amount) || 1)) * 100}%` }}
                   ></div>
                 </div>
               </div>

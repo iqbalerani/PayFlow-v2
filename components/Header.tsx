@@ -3,10 +3,11 @@ import React from 'react';
 
 interface HeaderProps {
   walletAddress: string | null;
+  displayName?: string;
   onDisconnect: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ walletAddress, onDisconnect }) => {
+const Header: React.FC<HeaderProps> = ({ walletAddress, displayName, onDisconnect }) => {
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 z-10">
       <div className="md:hidden flex items-center gap-2">
@@ -18,7 +19,7 @@ const Header: React.FC<HeaderProps> = ({ walletAddress, onDisconnect }) => {
       
       <div className="hidden md:block">
         <h2 className="text-lg font-semibold text-slate-800">
-          {new Date().getHours() < 12 ? 'Good morning' : 'Welcome back'}, Freelancer! 👋
+          {new Date().getHours() < 12 ? 'Good morning' : 'Welcome back'}, {displayName || 'Freelancer'}! 👋
         </h2>
       </div>
 

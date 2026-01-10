@@ -1,22 +1,38 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
+import { useAuthStore } from '../src/store/authStore';
+import { useUIStore } from '../src/store/uiStore';
 
 interface AuthPageProps {
   onBack: () => void;
-  onSuccess: (type: 'freelancer' | 'client') => void;
+  onSuccess: () => void;
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ onBack, onSuccess }) => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [isConnecting, setIsConnecting] = useState(false);
+  const { address, isConnected } = useAccount();
+  const { testLogin } = useAuthStore();
+  const { showError, showSuccess } = useUIStore();
 
-  const handleWalletConnect = () => {
-    setIsConnecting(true);
-    // Simulate wallet connection delay
-    setTimeout(() => {
-      setIsConnecting(false);
-      onSuccess('freelancer');
-    }, 1500);
+  // When wallet connects, authenticate with backend
+  useEffect(() => {
+    if (isConnected && address) {
+      handleBackendAuth(address);
+    }
+  }, [isConnected, address]);
+
+  const handleBackendAuth = async (walletAddress: string) => {
+    try {
+      // Authenticate with backend using the connected wallet address
+      await testLogin(walletAddress);
+      showSuccess('Wallet connected successfully!');
+      onSuccess();
+    } catch (error: any) {
+      console.error('Backend auth error:', error);
+      showError(error.message || 'Failed to authenticate');
+    }
   };
 
   return (
@@ -105,26 +121,106 @@ const AuthPage: React.FC<AuthPageProps> = ({ onBack, onSuccess }) => {
 
           {/* Primary Action: Wallet Connect */}
           <div className="space-y-4">
-            <button 
-              onClick={handleWalletConnect}
-              disabled={isConnecting}
-              className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-70"
-            >
-              {isConnecting ? (
-                <i className="fa-solid fa-spinner fa-spin"></i>
-              ) : (
-                <i className="fa-solid fa-wallet"></i>
-              )}
-              {mode === 'login' ? 'Connect Wallet to Sign In' : 'Sign Up with Wallet'}
-            </button>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={handleWalletConnect} className="py-3.5 border border-slate-200 rounded-2xl text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
-                <i className="fa-solid fa-link"></i> WalletConnect
-              </button>
-              <button onClick={handleWalletConnect} className="py-3.5 border border-slate-200 rounded-2xl text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
-                <i className="fa-solid fa-shield text-blue-500"></i> Coinbase
-              </button>
+            <div className="w-full">
+              <ConnectButton.Custom>
+                {({
+                  account,
+                  chain,
+                  openAccountModal,
+                  openChainModal,
+                  openConnectModal,
+                  authenticationStatus,
+                  mounted,
+                }) => {
+                  const ready = mounted && authenticationStatus !== 'loading';
+                  const connected =
+                    ready &&
+                    account &&
+                    chain &&
+                    (!authenticationStatus ||
+                      authenticationStatus === 'authenticated');
+
+                  return (
+                    <div
+                      {...(!ready && {
+                        'aria-hidden': true,
+                        'style': {
+                          opacity: 0,
+                          pointerEvents: 'none',
+                          userSelect: 'none',
+                        },
+                      })}
+                    >
+                      {(() => {
+                        if (!connected) {
+                          return (
+                            <button
+                              onClick={openConnectModal}
+                              type="button"
+                              className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 active:scale-95"
+                            >
+                              <i className="fa-solid fa-wallet"></i>
+                              {mode === 'login' ? 'Connect Wallet to Sign In' : 'Sign Up with Wallet'}
+                            </button>
+                          );
+                        }
+
+                        if (chain.unsupported) {
+                          return (
+                            <button
+                              onClick={openChainModal}
+                              type="button"
+                              className="w-full py-4 bg-red-600 text-white font-black rounded-2xl shadow-xl hover:bg-red-700 transition-all flex items-center justify-center gap-3"
+                            >
+                              <i className="fa-solid fa-exclamation-triangle"></i>
+                              Wrong Network
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <div className="flex gap-3">
+                            <button
+                              onClick={openChainModal}
+                              className="px-4 py-4 border border-slate-200 rounded-2xl text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                            >
+                              {chain.hasIcon && (
+                                <div
+                                  style={{
+                                    background: chain.iconBackground,
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: 999,
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  {chain.iconUrl && (
+                                    <img
+                                      alt={chain.name ?? 'Chain icon'}
+                                      src={chain.iconUrl}
+                                      style={{ width: 16, height: 16 }}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              {chain.name}
+                            </button>
+
+                            <button
+                              onClick={openAccountModal}
+                              type="button"
+                              className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-3"
+                            >
+                              <i className="fa-solid fa-wallet"></i>
+                              {account.displayName}
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                }}
+              </ConnectButton.Custom>
             </div>
           </div>
 

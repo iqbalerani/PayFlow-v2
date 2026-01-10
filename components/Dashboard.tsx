@@ -1,30 +1,59 @@
 
-import React from 'react';
-import { Invoice, InvoiceStatus, AppView } from '../types';
+import React, { useEffect, useState } from 'react';
+import { InvoiceStatus, AppView } from '../types';
+import { useInvoiceStore } from '../src/store/invoiceStore';
+import paymentService, { PaymentStats } from '../src/services/paymentService';
+import { useUIStore } from '../src/store/uiStore';
 
 interface DashboardProps {
-  invoices: Invoice[];
   onNavigate: (view: AppView, id?: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ invoices, onNavigate }) => {
-  const totalEarned = invoices
-    .filter(i => i.status === InvoiceStatus.COMPLETED)
-    .reduce((sum, i) => sum + i.total_amount, 0);
-    
-  const pendingInvoices = invoices.filter(i => i.status === InvoiceStatus.PENDING).length;
-  
-  const inEscrow = invoices.reduce((sum, inv) => {
-    return sum + inv.milestones
-      .filter(m => m.status === 'paid')
-      .reduce((mSum, m) => mSum + m.amount, 0);
-  }, 0);
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+  const { invoices, isLoading, fetchInvoices } = useInvoiceStore();
+  const { showError } = useUIStore();
+  const [stats, setStats] = useState<PaymentStats | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
 
-  const stats = [
-    { label: 'Total Revenue', value: `${totalEarned.toLocaleString()}`, currency: 'MNEE', sub: '↑ 12% vs last month', icon: 'fa-money-bill-trend-up', color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'In Escrow', value: `${inEscrow.toLocaleString()}`, currency: 'MNEE', sub: 'Secured in contracts', icon: 'fa-vault', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'Pending', value: pendingInvoices.toString(), currency: 'INVOICES', sub: 'Awaiting signature', icon: 'fa-clock-rotate-left', color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Completion', value: '98', currency: '% RATE', sub: 'Top 1% freelancer', icon: 'fa-award', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoadingStats(true);
+        const statsData = await paymentService.getStats('month');
+        setStats(statsData);
+      } catch (error: any) {
+        showError(error.message || 'Failed to load dashboard data');
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+
+    loadData();
+  }, [showError]);
+
+  if (loadingStats || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-500 font-medium">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const totalEarned = stats ? parseFloat(stats.totalEarned) : 0;
+  const inEscrow = stats ? parseFloat(stats.inEscrow) : 0;
+  const pendingAmount = stats ? parseFloat(stats.pendingAmount) : 0;
+  const activeInvoices = stats?.activeInvoices || 0;
+  const completionRate = stats?.completionRate || 0;
+  const percentChange = stats?.percentChange || 0;
+
+  const statsCards = [
+    { label: 'Total Revenue', value: `${totalEarned.toLocaleString()}`, currency: 'USD', sub: `${percentChange >= 0 ? '↑' : '↓'} ${Math.abs(percentChange)}% vs last month`, icon: 'fa-money-bill-trend-up', color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'In Escrow', value: `${inEscrow.toLocaleString()}`, currency: 'USD', sub: 'Secured in contracts', icon: 'fa-vault', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Pending', value: `${pendingAmount.toLocaleString()}`, currency: 'USD', sub: `${activeInvoices} active project${activeInvoices !== 1 ? 's' : ''}`, icon: 'fa-clock-rotate-left', color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Completion', value: completionRate.toString(), currency: '% RATE', sub: 'Released milestones', icon: 'fa-award', color: 'text-emerald-600', bg: 'bg-emerald-50' },
   ];
 
   return (
@@ -50,7 +79,7 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, onNavigate }) => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
+        {statsCards.map((stat, i) => (
           <div key={i} className="group bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 transition-all relative overflow-hidden">
             <div className={`w-12 h-12 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center text-xl mb-6 group-hover:scale-110 transition-transform`}>
               <i className={`fa-solid ${stat.icon}`}></i>

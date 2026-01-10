@@ -1,15 +1,19 @@
 
 import React, { useState } from 'react';
-import { generateInvoiceFromPrompt, generateClientMessage } from '../services/geminiService';
+import aiService from '../src/services/aiService';
+import { useInvoiceStore } from '../src/store/invoiceStore';
+import { useAuthStore } from '../src/store/authStore';
+import { useUIStore } from '../src/store/uiStore';
 import { Invoice, InvoiceStatus, MilestoneStatus, AppView } from '../types';
 
 interface CreateInvoiceProps {
-  walletAddress: string;
-  onCreated: (invoice: Invoice) => void;
   onNavigate: (view: AppView, id?: string) => void;
 }
 
-const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated, onNavigate }) => {
+const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
+  const { user } = useAuthStore();
+  const { createInvoice } = useInvoiceStore();
+  const { showSuccess, showError } = useUIStore();
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<Partial<Invoice> | null>(null);
@@ -21,21 +25,42 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
     if (!prompt.trim()) return;
     setLoading(true);
     try {
-      const generated = await generateInvoiceFromPrompt(prompt, walletAddress);
+      const generated = await aiService.generateInvoice(prompt);
       setPreview(generated);
+      showSuccess('Invoice generated successfully!');
     } catch (err) {
-      alert("Error generating invoice. Please try again.");
+      console.error("Error generating invoice:", err);
+      showError("Error generating invoice. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleConfirm = async () => {
-    if (preview) {
-      const fullInvoice = preview as Invoice;
-      onCreated(fullInvoice);
-      setSuccess(fullInvoice);
+    if (!preview) return;
+
+    try {
+      const invoiceData = {
+        title: preview.title!,
+        description: preview.description || '',
+        totalAmount: preview.totalAmount!,
+        currency: preview.currency || 'MNEE',
+        category: preview.category || 'General',
+        milestones: preview.milestones?.map((m) => ({
+          title: m.title,
+          description: m.description || '',
+          amount: m.amount,
+          percentage: m.percentage
+        })) || []
+      };
+
+      const createdInvoice = await createInvoice(invoiceData);
+      setSuccess(createdInvoice);
       setPreview(null);
+      showSuccess('Invoice created successfully!');
+    } catch (err) {
+      console.error("Error creating invoice:", err);
+      showError("Failed to create invoice. Please try again.");
     }
   };
 
@@ -43,16 +68,22 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
     if (!success) return;
     setGeneratingMsg(true);
     try {
-      const msg = await generateClientMessage(success);
+      const msg = await aiService.generateMessage(
+        success.title,
+        success.client_name,
+        success.total_amount
+      );
       setAiMessage(msg);
+      showSuccess('Message generated successfully!');
     } catch (err) {
       console.error("Failed to generate msg", err);
+      showError("Failed to generate message. Please try again.");
     } finally {
       setGeneratingMsg(false);
     }
   };
   if (success) {
-    const publicLink = `https://payflow.ai/#pay/${success.id}`;
+    const publicLink = `${window.location.origin}/#pay/${success.id}`;
     return (
       <div className="max-w-2xl mx-auto py-12 text-center animate-in zoom-in duration-500">
         <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-8 shadow-xl shadow-green-100">
@@ -137,11 +168,11 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
             <div className="flex justify-between items-start mb-10">
               <div>
                 <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">INVOICE</h1>
-                <p className="text-slate-400 mt-1 font-mono">{preview.id}</p>
+                <p className="text-slate-400 mt-1 font-mono">DRAFT</p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-slate-400 font-bold uppercase">Amount Due</p>
-                <p className="text-3xl font-bold text-slate-900">{preview.total_amount} {preview.currency}</p>
+                <p className="text-3xl font-bold text-slate-900">{preview.totalAmount} {preview.currency}</p>
               </div>
             </div>
 
@@ -149,11 +180,11 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
               <div>
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">From (Freelancer)</h4>
                 <p className="font-bold text-slate-900">You</p>
-                <p className="text-sm text-slate-500 font-mono mt-1 truncate">{walletAddress}</p>
+                <p className="text-sm text-slate-500 font-mono mt-1 truncate">{user?.walletAddress}</p>
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Bill To (Client)</h4>
-                <p className="font-bold text-slate-900">{preview.client_name}</p>
+                <p className="font-bold text-slate-900">{preview.clientName || 'Client'}</p>
                 <p className="text-sm text-slate-500 mt-1">Pending connection</p>
               </div>
             </div>
@@ -170,7 +201,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ walletAddress, onCreated,
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Payment Breakdown (Escrow)</h4>
               <div className="space-y-4">
                 {preview.milestones?.map((ms, i) => (
-                  <div key={ms.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                  <div key={`milestone-${i}`} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-bold">
                         {i + 1}

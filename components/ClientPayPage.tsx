@@ -1,70 +1,190 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
 import { Invoice, Milestone, MilestoneStatus } from '../types';
+import invoiceService from '../src/services/invoiceService';
+import { useUIStore } from '../src/store/uiStore';
+import { useMNEEToken } from '../src/hooks/useMNEEToken';
+import { usePayFlowEscrow } from '../src/hooks/usePayFlowEscrow';
+import TransactionModal from './TransactionModal';
 
 interface ClientPayPageProps {
-  invoice?: Invoice;
-  walletConnected: boolean;
-  onConnect: () => void;
-  onPay: (milestoneId: string) => void;
-  onApprove: (milestoneId: string) => void;
+  invoiceId: string;
 }
 
-const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected, onConnect, onPay, onApprove }) => {
+const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
+  const { showSuccess, showError } = useUIStore();
+  const { address: connectedAddress, isConnected } = useAccount();
+  const { approveMNEE, hasSufficientBalance, hasSufficientAllowance, formattedBalance } = useMNEEToken();
+  const { depositMilestone, releaseMilestone, hash, isPending, isConfirming, isSuccess } = usePayFlowEscrow();
+
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedMilestone, setSelectedMilestone] = useState<Milestone | null>(null);
-  const [txStep, setTxStep] = useState<'idle' | 'approving' | 'confirming' | 'success'>('idle');
+  const [txStep, setTxStep] = useState<'idle' | 'approving' | 'pending' | 'confirming' | 'success' | 'error'>('idle');
   const [isApprovingMode, setIsApprovingMode] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [txError, setTxError] = useState<string>('');
 
-  if (!invoice) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-200 text-center max-w-md w-full">
-        <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
-          <i className="fa-solid fa-triangle-exclamation text-3xl"></i>
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900">Invoice Not Found</h1>
-        <p className="text-slate-500 mt-2">The link you followed might be broken or the invoice has been removed.</p>
-        <button onClick={() => window.location.hash = ''} className="mt-8 px-6 py-2 bg-slate-900 text-white rounded-xl font-bold">Return Home</button>
-      </div>
-    </div>
-  );
+  // Fetch invoice data
+  useEffect(() => {
+    const fetchInvoice = async () => {
+      setIsLoading(true);
+      try {
+        const data = await invoiceService.getPublicInvoice(invoiceId);
+        setInvoice(data);
+      } catch (error) {
+        console.error('Error fetching invoice:', error);
+        showError('Failed to load invoice');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const handleWalletConnect = () => {
-    setIsConnecting(true);
-    // Simulate wallet connection inline
-    setTimeout(() => {
-      onConnect();
-      setIsConnecting(false);
-    }, 1200);
+    fetchInvoice();
+  }, [invoiceId, showError]);
+
+  // Register wallet with backend when connected
+  useEffect(() => {
+    if (isConnected && connectedAddress && invoice) {
+      registerWallet();
+    }
+  }, [isConnected, connectedAddress, invoice]);
+
+  const registerWallet = async () => {
+    if (!connectedAddress || !invoice) return;
+
+    try {
+      await invoiceService.registerClient(invoice.id, connectedAddress);
+      const updatedInvoice = await invoiceService.getPublicInvoice(invoiceId);
+      setInvoice(updatedInvoice);
+    } catch (error: any) {
+      console.error('Error registering wallet:', error);
+      // Don't show error if already registered
+      if (!error?.message?.includes('already assigned')) {
+        showError('Failed to register wallet');
+      }
+    }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Loading invoice...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!invoice) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-200 text-center max-w-md w-full">
+          <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <i className="fa-solid fa-triangle-exclamation text-3xl"></i>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900">Invoice Not Found</h1>
+          <p className="text-slate-500 mt-2">The link you followed might be broken or the invoice has been removed.</p>
+          <button onClick={() => window.location.hash = ''} className="mt-8 px-6 py-2 bg-slate-900 text-white rounded-xl font-bold">Return Home</button>
+        </div>
+      </div>
+    );
+  }
+
   const handleActionClick = (ms: Milestone, mode: 'pay' | 'approve') => {
-    if (!walletConnected) {
-      handleWalletConnect();
+    if (!isConnected) {
+      showError('Please connect your wallet first');
       return;
     }
     setSelectedMilestone(ms);
     setIsApprovingMode(mode === 'approve');
     setTxStep('idle');
+    setTxError('');
   };
 
-  const simulateTransaction = async () => {
-    setTxStep('approving');
-    await new Promise(r => setTimeout(r, 1200));
-    setTxStep('confirming');
-    await new Promise(r => setTimeout(r, 1200));
-    setTxStep('success');
-    await new Promise(r => setTimeout(r, 800));
-    
-    if (selectedMilestone) {
+  const handleTransaction = async () => {
+    if (!selectedMilestone || !connectedAddress || !invoice) return;
+
+    try {
+      setTxError('');
+      const milestoneIndex = invoice.milestones.findIndex(m => m.id === selectedMilestone.id);
+      const amount = selectedMilestone.amount.toString();
+
       if (isApprovingMode) {
-        onApprove(selectedMilestone.id);
+        // Release milestone from escrow
+        setTxStep('pending');
+        const txHash = await releaseMilestone(invoice.id, milestoneIndex);
+
+        setTxStep('confirming');
+        // Wait for transaction confirmation (handled by useWaitForTransactionReceipt in hook)
+
+        // Update backend with transaction hash
+        await invoiceService.updateMilestone(invoice.id, milestoneIndex, {
+          status: MilestoneStatus.RELEASED,
+          txHash: txHash
+        });
+
+        setTxStep('success');
+        showSuccess('Milestone released successfully!');
+
+        // Refresh invoice data
+        setTimeout(async () => {
+          const updatedInvoice = await invoiceService.getPublicInvoice(invoiceId);
+          setInvoice(updatedInvoice);
+          setSelectedMilestone(null);
+          setTxStep('idle');
+        }, 2000);
+
       } else {
-        onPay(selectedMilestone.id);
+        // Deposit milestone into escrow
+        // Step 1: Check balance
+        if (!hasSufficientBalance(amount)) {
+          throw new Error(`Insufficient MNEE balance. You need ${amount} MNEE.`);
+        }
+
+        // Step 2: Check/approve allowance
+        if (!hasSufficientAllowance(amount)) {
+          setTxStep('approving');
+          const approvalHash = await approveMNEE(amount);
+
+          setTxStep('confirming');
+          // Wait for approval confirmation
+        }
+
+        // Step 3: Deposit into escrow
+        setTxStep('pending');
+        const txHash = await depositMilestone(invoice.id, milestoneIndex);
+
+        setTxStep('confirming');
+        // Wait for deposit confirmation
+
+        // Update backend with transaction hash
+        await invoiceService.updateMilestone(invoice.id, milestoneIndex, {
+          status: MilestoneStatus.PAID,
+          txHash: txHash
+        });
+
+        setTxStep('success');
+        showSuccess('Payment successful! Funds are now in escrow.');
+
+        // Refresh invoice data
+        setTimeout(async () => {
+          const updatedInvoice = await invoiceService.getPublicInvoice(invoiceId);
+          setInvoice(updatedInvoice);
+          setSelectedMilestone(null);
+          setTxStep('idle');
+        }, 2000);
       }
+
+    } catch (error: any) {
+      console.error('Transaction error:', error);
+      const errorMessage = error?.message || error?.shortMessage || 'Transaction failed';
+      setTxError(errorMessage);
+      setTxStep('error');
+      showError(errorMessage);
     }
-    setSelectedMilestone(null);
-    setTxStep('idle');
   };
 
   return (
@@ -122,7 +242,7 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
               
               <div className="space-y-4">
                 {invoice.milestones.map((ms, idx) => {
-                  const isLocked = idx > 0 && invoice.milestones[idx-1].status === MilestoneStatus.PENDING;
+                  const isLocked = idx > 0 && invoice.milestones[idx-1].status === MilestoneStatus.EMPTY;
                   
                   return (
                     <div key={ms.id} className={`p-5 rounded-2xl border transition-all ${
@@ -157,8 +277,8 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
                           </div>
                         </div>
 
-                        {!isLocked && ms.status === MilestoneStatus.PENDING && (
-                          <button 
+                        {!isLocked && ms.status === MilestoneStatus.EMPTY && (
+                          <button
                             onClick={() => handleActionClick(ms, 'pay')}
                             className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-all active:scale-95"
                           >
@@ -205,26 +325,29 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
         </div>
 
         <div className="flex flex-col items-center gap-4 py-6">
-          {!walletConnected ? (
-            <button 
-              onClick={handleWalletConnect}
-              disabled={isConnecting}
-              className="w-full max-w-sm py-5 bg-blue-600 text-white text-lg font-black rounded-2xl shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all transform hover:scale-[1.02] disabled:opacity-70 active:scale-95"
-            >
-              {isConnecting ? (
-                <i className="fa-solid fa-spinner fa-spin"></i>
-              ) : (
-                <i className="fa-solid fa-wallet"></i>
+          {!isConnected ? (
+            <ConnectButton.Custom>
+              {({ openConnectModal }) => (
+                <button
+                  onClick={openConnectModal}
+                  className="w-full max-w-sm py-5 bg-blue-600 text-white text-lg font-black rounded-2xl shadow-2xl shadow-blue-500/30 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all transform hover:scale-[1.02] active:scale-95"
+                >
+                  <i className="fa-solid fa-wallet"></i>
+                  Connect Wallet to Pay
+                </button>
               )}
-              {isConnecting ? 'Opening Wallet...' : 'Connect Wallet to Pay'}
-            </button>
+            </ConnectButton.Custom>
           ) : (
             <div className="flex flex-col items-center gap-3 animate-in zoom-in duration-300">
               <div className="flex items-center gap-3 px-6 py-2 bg-green-50 text-green-700 rounded-full border border-green-100 text-sm font-bold shadow-sm">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                Connected: 0x7f8...9a2b
+                Connected: {connectedAddress ? `${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)}` : '0x...'}
               </div>
-              <p className="text-xs text-slate-400 font-medium">Network: Ethereum Mainnet • Stablecoin: MNEE</p>
+              <div className="flex items-center gap-4 text-xs text-slate-400 font-medium">
+                <span>Network: Ethereum Mainnet</span>
+                <span>•</span>
+                <span>Balance: {formattedBalance} MNEE</span>
+              </div>
             </div>
           )}
         </div>
@@ -273,11 +396,11 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
                 </div>
 
                 {txStep === 'idle' ? (
-                  <button 
-                    onClick={simulateTransaction}
+                  <button
+                    onClick={handleTransaction}
                     className={`w-full py-5 text-white font-black text-lg rounded-2xl shadow-xl transition-all active:scale-95 ${
-                      isApprovingMode 
-                        ? 'bg-blue-600 shadow-blue-500/20 hover:bg-blue-700' 
+                      isApprovingMode
+                        ? 'bg-blue-600 shadow-blue-500/20 hover:bg-blue-700'
                         : 'bg-slate-900 shadow-slate-900/10 hover:bg-slate-800'
                     }`}
                   >
@@ -292,9 +415,20 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoice, walletConnected,
                           <i className="fa-solid fa-check text-green-500 text-2xl"></i>
                         </div>
                       )}
+                      {txStep === 'error' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white rounded-full">
+                          <i className="fa-solid fa-xmark text-red-500 text-2xl"></i>
+                        </div>
+                      )}
                     </div>
                     <p className="font-black text-slate-900 uppercase tracking-widest text-xs">{txStep}...</p>
-                    <p className="text-xs text-slate-400">Please check your wallet for confirmation</p>
+                    {txStep === 'error' ? (
+                      <p className="text-xs text-red-500 text-center max-w-xs">{txError}</p>
+                    ) : (
+                      <p className="text-xs text-slate-400">
+                        {txStep === 'approving' ? 'Approve MNEE in your wallet' : 'Please check your wallet for confirmation'}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

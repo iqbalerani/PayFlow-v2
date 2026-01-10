@@ -1,0 +1,150 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ ENUMS ============
+
+enum InvoiceStatus {
+  PENDING     // Created, not paid yet
+  ACTIVE      // At least one milestone paid
+  COMPLETED   // All milestones released
+  CANCELLED   // Cancelled by freelancer
+}
+
+enum MilestoneStatus {
+  EMPTY       // Not paid
+  PAID        // Deposited in escrow
+  RELEASED    // Released to freelancer
+  REFUNDED    // Refunded to client
+}
+
+enum TransactionType {
+  DEPOSIT     // Client → Escrow
+  RELEASE     // Escrow → Freelancer
+  REFUND      // Escrow → Client
+}
+
+// ============ MODELS ============
+
+model User {
+  id            String    @id @default(uuid())
+  walletAddress String    @unique @map("wallet_address")
+  displayName   String?   @map("display_name")
+  email         String?
+
+  // Settings
+  autoApproval  Boolean   @default(false) @map("auto_approval")
+  emailNotify   Boolean   @default(true)  @map("email_notify")
+
+  // Relations
+  invoices      Invoice[]
+
+  // Timestamps
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt      @map("updated_at")
+
+  @@map("users")
+}
+
+model Invoice {
+  id            String        @id // Custom format: INV-YYYY-XXX
+
+  // Relationships
+  freelancerId  String        @map("freelancer_id")
+  freelancer    User          @relation(fields: [freelancerId], references: [id])
+
+  // Client info (filled when client pays)
+  clientWallet  String?       @map("client_wallet")
+  clientEmail   String?       @map("client_email")
+  clientName    String?       @map("client_name")
+
+  // Invoice details
+  title         String
+  description   String        @db.Text
+  totalAmount   Decimal       @map("total_amount") @db.Decimal(18, 2)
+  currency      String        @default("MNEE")
+  category      String?       // design, development, consulting, etc.
+
+  // Status
+  status        InvoiceStatus @default(PENDING)
+
+  // Payment link
+  paymentLink   String        @unique @map("payment_link")
+
+  // Relations
+  milestones    Milestone[]
+  transactions  Transaction[]
+
+  // Timestamps
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt      @map("updated_at")
+
+  @@map("invoices")
+}
+
+model Milestone {
+  id            String          @id @default(uuid())
+
+  // Parent invoice
+  invoiceId     String          @map("invoice_id")
+  invoice       Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Milestone details
+  index         Int             // 0, 1, 2, etc.
+  title         String
+  description   String?
+  amount        Decimal         @db.Decimal(18, 2)
+  percentage    Int             // 0-100
+
+  // Status
+  status        MilestoneStatus @default(EMPTY)
+
+  // Payment tracking
+  paidAt        DateTime?       @map("paid_at")
+  releasedAt    DateTime?       @map("released_at")
+  depositTxHash String?         @map("deposit_tx_hash")
+  releaseTxHash String?         @map("release_tx_hash")
+
+  // Timestamps
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt      @map("updated_at")
+
+  // Unique constraint for invoice + index
+  @@unique([invoiceId, index])
+  @@map("milestones")
+}
+
+model Transaction {
+  id            String          @id @default(uuid())
+
+  // Parent invoice
+  invoiceId     String          @map("invoice_id")
+  invoice       Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Milestone reference
+  milestoneIdx  Int             @map("milestone_index")
+
+  // Transaction details
+  type          TransactionType
+  amount        Decimal         @db.Decimal(18, 2)
+
+  // Wallet addresses
+  fromWallet    String          @map("from_wallet")
+  toWallet      String          @map("to_wallet")
+
+  // Blockchain reference
+  txHash        String          @unique @map("tx_hash")
+
+  // Timestamps
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@map("transactions")
+}

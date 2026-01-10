@@ -1,15 +1,16 @@
 
 export enum InvoiceStatus {
-  PENDING = 'pending',
-  ACTIVE = 'active',
-  COMPLETED = 'completed',
-  CANCELLED = 'cancelled'
+  PENDING = 'PENDING',
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
 }
 
 export enum MilestoneStatus {
-  PENDING = 'pending',
-  PAID = 'paid', // Paid into escrow
-  RELEASED = 'released' // Released to freelancer
+  EMPTY = 'EMPTY', // Not paid
+  PAID = 'PAID', // Paid into escrow
+  RELEASED = 'RELEASED', // Released to freelancer
+  REFUNDED = 'REFUNDED' // Refunded to client
 }
 
 export interface Milestone {
