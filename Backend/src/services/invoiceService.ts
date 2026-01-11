@@ -175,7 +175,7 @@ export class InvoiceService {
     }
 
     if (invoice.status !== InvoiceStatus.PENDING) {
-      throw new Error('Can only cancel pending invoices');
+      throw new Error(`Cannot delete invoices with active payments. Only PENDING invoices can be cancelled. Current status: ${invoice.status}`);
     }
 
     await prisma.invoice.update({

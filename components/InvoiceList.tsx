@@ -127,13 +127,15 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onNavigate }) => {
                     >
                       <i className="fa-solid fa-link"></i>
                     </button>
-                    <button
-                      onClick={(e) => handleDeleteClick(e, inv)}
-                      className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 flex items-center justify-center transition-all"
-                      title="Delete invoice"
-                    >
-                      <i className="fa-solid fa-trash"></i>
-                    </button>
+                    {inv.status === 'PENDING' && (
+                      <button
+                        onClick={(e) => handleDeleteClick(e, inv)}
+                        className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 flex items-center justify-center transition-all"
+                        title="Delete invoice"
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                      </button>
+                    )}
                     <button className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 flex items-center justify-center transition-all">
                       <i className="fa-solid fa-arrow-right"></i>
                     </button>
