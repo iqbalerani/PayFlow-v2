@@ -55,8 +55,20 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
       return;
     }
 
+    // CRITICAL: Verify user is on Sepolia testnet
+    if (chainId !== 11155111) {
+      showError(
+        `Wrong network! Please switch to Sepolia Testnet in your wallet. Currently on chain ID: ${chainId}`
+      );
+      return;
+    }
+
+    console.log('✅ Network check passed - User is on Sepolia (chain ID: 11155111)');
+    console.log('✅ Wallet connected:', userAddress);
+
     let tempInvoiceId: string | null = null;
     let blockchainTxHash: string | null = null;
+    let blockchainSuccess = false; // Track if blockchain registration succeeded
 
     try {
       const invoiceData = {
@@ -84,11 +96,19 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
       setBlockchainStep('submitting');
       const milestoneAmounts = invoiceData.milestones.map(m => m.amount.toString());
 
+      console.log('📝 Creating invoice on blockchain:');
+      console.log('  Invoice ID:', tempInvoiceId);
+      console.log('  Freelancer:', userAddress);
+      console.log('  Milestones:', milestoneAmounts);
+      console.log('  ChainId:', chainId);
+
       blockchainTxHash = await createBlockchainInvoice(
         tempInvoiceId,
         userAddress,
         milestoneAmounts
       );
+
+      console.log('✅ Transaction submitted:', blockchainTxHash);
 
       // Step 3: Wait for ACTUAL blockchain confirmation (not just a timeout!)
       setBlockchainStep('confirming');
@@ -110,17 +130,58 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
         confirmations: 1, // Wait for at least 1 confirmation
       });
 
+      console.log('📄 Transaction receipt:', receipt);
+      console.log('  Status:', receipt.status);
+      console.log('  Block:', receipt.blockNumber);
+      console.log('  Gas used:', receipt.gasUsed.toString());
+
       // Check if transaction was successful
       if (receipt.status !== 'success') {
+        console.error('❌ Transaction reverted!');
         throw new Error('Transaction was reverted on the blockchain. Please check your wallet and try again.');
       }
 
+      console.log('✅ Transaction confirmed successfully!');
+
+      // Verify invoice was created on blockchain
+      console.log('🔍 Verifying invoice on blockchain...');
+      const verifyResult = await publicClient.readContract({
+        address: (await import('../src/lib/wagmi')).PAYFLOW_ESCROW_ADDRESS,
+        abi: (await import('../src/lib/PayFlowEscrow.json')).default.abi,
+        functionName: 'getInvoice',
+        args: [tempInvoiceId],
+      }) as [string, string, bigint, boolean];
+
+      const invoiceExists = verifyResult[3];
+      console.log('  Invoice exists on blockchain:', invoiceExists ? '✅ YES' : '❌ NO');
+
+      if (!invoiceExists) {
+        console.error('❌ Invoice was NOT created on blockchain despite successful transaction!');
+        throw new Error('Invoice creation failed. The transaction succeeded but the invoice was not created. Please try again.');
+      }
+
+      console.log('✅ Blockchain registration VERIFIED and SUCCESSFUL!');
+      blockchainSuccess = true; // Mark blockchain as successful
+
       // Step 4: ONLY create in database after blockchain success
       setBlockchainStep('saving');
-      const createdInvoice = await createInvoice({
-        ...invoiceData,
-        id: tempInvoiceId // Use the same ID we registered on blockchain
-      });
+      console.log('💾 Creating invoice in database...');
+      console.log('  Data:', { ...invoiceData, id: tempInvoiceId });
+
+      let createdInvoice;
+      try {
+        createdInvoice = await createInvoice({
+          ...invoiceData,
+          id: tempInvoiceId // Use the same ID we registered on blockchain
+        });
+        console.log('✅ Database save successful!');
+        console.log('  Created invoice:', createdInvoice);
+      } catch (dbError: any) {
+        console.error('❌ Database save FAILED:', dbError);
+        console.error('  Error message:', dbError.message);
+        console.error('  Error details:', dbError);
+        throw new Error(`Blockchain registration succeeded, but database save failed: ${dbError.message}`);
+      }
 
       setBlockchainStep('done');
       setSuccess(createdInvoice);
@@ -130,7 +191,23 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
       console.error("Error creating invoice:", err);
       setBlockchainStep('idle');
 
-      // Show user-friendly error messages
+      // CRITICAL: Check if blockchain succeeded but database failed
+      if (blockchainSuccess && tempInvoiceId) {
+        console.error('🚨 CRITICAL: Blockchain succeeded but database save failed!');
+        console.error(`🚨 ORPHANED INVOICE: ${tempInvoiceId} exists on blockchain but not in database`);
+        console.error(`🚨 Transaction hash: ${blockchainTxHash}`);
+        console.error(`🚨 This invoice needs to be cleaned up or manually added to database`);
+
+        showError(
+          `⚠️ Blockchain registration succeeded (${tempInvoiceId}), but database save failed!\n\n` +
+          `Error: ${err?.message || 'Unknown database error'}\n\n` +
+          `The invoice exists on the blockchain but not in the app. ` +
+          `Please contact support with invoice ID: ${tempInvoiceId}`
+        );
+        return;
+      }
+
+      // Show user-friendly error messages for blockchain failures
       if (err?.message?.includes('User rejected') || err?.message?.includes('user rejected')) {
         showError('Transaction rejected. Invoice was not created.');
       } else if (err?.message?.includes('insufficient')) {
@@ -138,9 +215,6 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
       } else {
         showError(err?.message || 'Failed to create invoice on blockchain. Please try again.');
       }
-
-      // Important: Invoice was NOT created in database, so no cleanup needed
-      // The blockchain transaction either failed or was rejected before DB creation
     }
   };
 

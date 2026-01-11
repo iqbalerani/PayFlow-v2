@@ -37,6 +37,7 @@ export function validate(schema: ZodSchema, source: 'body' | 'query' | 'params' 
 export const schemas = {
   // Invoice creation
   createInvoice: z.object({
+    id: z.string().regex(/^INV-\d{4}-\d{3}$/, 'Invalid invoice ID format').optional(),
     title: z.string().min(3).max(200),
     description: z.string().min(10).max(5000),
     clientEmail: z.string().email().optional(),

@@ -2,14 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { Invoice, InvoiceStatus, AppView } from '../types';
 import { useInvoiceStore } from '../src/store/invoiceStore';
+import { useUIStore } from '../src/store/uiStore';
 
 interface InvoiceListProps {
   onNavigate: (view: AppView, id?: string) => void;
 }
 
 const InvoiceList: React.FC<InvoiceListProps> = ({ onNavigate }) => {
-  const { invoices, isLoading, fetchInvoices } = useInvoiceStore();
+  const { invoices, isLoading, fetchInvoices, cancelInvoice } = useInvoiceStore();
+  const { showSuccess, showError } = useUIStore();
   const [filter, setFilter] = useState<string>('all');
+  const [deleteConfirm, setDeleteConfirm] = useState<Invoice | null>(null);
 
   useEffect(() => {
     fetchInvoices();
@@ -26,6 +29,23 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onNavigate }) => {
       case InvoiceStatus.ACTIVE: return 'bg-blue-100 text-blue-700';
       case InvoiceStatus.PENDING: return 'bg-amber-100 text-amber-700';
       default: return 'bg-slate-100 text-slate-700';
+    }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, invoice: Invoice) => {
+    e.stopPropagation(); // Prevent card click
+    setDeleteConfirm(invoice);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+
+    try {
+      await cancelInvoice(deleteConfirm.id);
+      showSuccess(`Invoice ${deleteConfirm.id} deleted successfully`);
+      setDeleteConfirm(null);
+    } catch (error: any) {
+      showError(error.message || 'Failed to delete invoice');
     }
   };
 
@@ -97,8 +117,22 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onNavigate }) => {
                     <p className="text-4xl font-black text-slate-900">{inv.total_amount} <span className="text-sm font-bold text-slate-300">MNEE</span></p>
                   </div>
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 flex items-center justify-center transition-all">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(`${window.location.origin}/#pay/${inv.id}`);
+                      }}
+                      className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 flex items-center justify-center transition-all"
+                      title="Copy payment link"
+                    >
                       <i className="fa-solid fa-link"></i>
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteClick(e, inv)}
+                      className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 flex items-center justify-center transition-all"
+                      title="Delete invoice"
+                    >
+                      <i className="fa-solid fa-trash"></i>
                     </button>
                     <button className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 flex items-center justify-center transition-all">
                       <i className="fa-solid fa-arrow-right"></i>
@@ -117,6 +151,42 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onNavigate }) => {
             <p className="text-slate-500 mt-2 font-medium max-w-xs mx-auto">Try changing your filters or use our AI generator to start a new one.</p>
           </div>
         )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in zoom-in duration-300">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fa-solid fa-trash text-2xl"></i>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-2">Delete Invoice?</h3>
+              <p className="text-slate-500 mb-1">
+                Are you sure you want to delete invoice
+              </p>
+              <p className="font-mono text-sm font-bold text-slate-900 mb-2">{deleteConfirm.id}</p>
+              <p className="text-sm text-slate-600 font-semibold mb-6">{deleteConfirm.title}</p>
+              <p className="text-xs text-red-600 font-bold mb-6">
+                ⚠️ This action cannot be undone
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

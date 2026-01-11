@@ -22,19 +22,42 @@ export function usePayFlowEscrow() {
     freelancerAddress: string,
     milestoneAmounts: string[] // amounts as strings (e.g., "100.50")
   ) => {
-    if (!chainId) throw new Error('No chain connected');
+    console.log('🔧 [createInvoice] Called with:');
+    console.log('  Invoice ID:', invoiceId);
+    console.log('  Freelancer:', freelancerAddress);
+    console.log('  Milestones:', milestoneAmounts);
+    console.log('  ChainId:', chainId);
+
+    if (!chainId) {
+      console.error('  ❌ No chain connected!');
+      throw new Error('No chain connected');
+    }
+
+    if (!freelancerAddress || freelancerAddress === '0x' || freelancerAddress.length !== 42) {
+      console.error('  ❌ Invalid freelancer address!');
+      throw new Error(`Invalid freelancer address: ${freelancerAddress}`);
+    }
+
+    if (!milestoneAmounts || milestoneAmounts.length === 0) {
+      console.error('  ❌ No milestones provided!');
+      throw new Error('At least one milestone is required');
+    }
 
     const config = getPayFlowEscrowConfig(chainId);
+    console.log('  Contract address:', config.address);
 
     // Convert amounts to BigInt (wei)
     const amounts = milestoneAmounts.map(amount => parseUnits(amount, 18));
+    console.log('  Converted amounts (wei):', amounts.map(a => a.toString()));
 
+    console.log('  Calling writeContractAsync...');
     const hash = await writeContractAsync({
       ...config,
       functionName: 'createInvoice',
       args: [invoiceId, freelancerAddress as `0x${string}`, amounts],
     });
 
+    console.log('  ✅ Transaction hash:', hash);
     return hash;
   };
 
@@ -114,19 +137,38 @@ export function usePayFlowEscrow() {
    * Check if invoice exists on blockchain
    */
   const checkInvoiceExists = async (invoiceId: string): Promise<boolean> => {
-    if (!chainId) return false;
+    console.log('🔍 [checkInvoiceExists] Called for:', invoiceId);
+    console.log('  ChainId:', chainId);
+
+    if (!chainId) {
+      console.log('  ❌ No chainId, returning false');
+      return false;
+    }
 
     try {
       const config = getPayFlowEscrowConfig(chainId);
+      console.log('  Contract address:', config.address);
+
       const { readContract } = await import('viem/actions');
       const { createPublicClient, http } = await import('viem');
       const { sepolia, mainnet } = await import('viem/chains');
 
+      // Get Alchemy RPC URL (same as CreateInvoice.tsx)
+      const alchemyKey = import.meta.env.VITE_ALCHEMY_API_KEY;
+      console.log('  Alchemy key exists:', !!alchemyKey);
+
+      const rpcUrl = chainId === 11155111
+        ? `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`
+        : `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+
+      console.log('  RPC URL:', rpcUrl.substring(0, 50) + '...');
+
       const client = createPublicClient({
         chain: chainId === 11155111 ? sepolia : mainnet,
-        transport: http(),
+        transport: http(rpcUrl),
       });
 
+      console.log('  Calling getInvoice...');
       const result = await client.readContract({
         address: config.address,
         abi: config.abi,
@@ -134,11 +176,17 @@ export function usePayFlowEscrow() {
         args: [invoiceId],
       });
 
+      console.log('  Contract response:', result);
+      console.log('  Exists field (result[3]):', result[3]);
+
       // getInvoice returns (address freelancer, address client, uint256 milestoneCount, bool exists)
       // If exists is true, invoice is registered on blockchain
-      return result[3] as boolean;
+      const exists = result[3] as boolean;
+      console.log('  Final result:', exists ? '✅ EXISTS' : '❌ NOT FOUND');
+
+      return exists;
     } catch (error) {
-      console.error('Error checking invoice existence:', error);
+      console.error('  ❌ Error checking invoice existence:', error);
       return false;
     }
   };

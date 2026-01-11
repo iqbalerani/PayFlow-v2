@@ -61,8 +61,21 @@ class InvoiceService {
    * Create new invoice
    */
   async createInvoice(data: CreateInvoiceData): Promise<Invoice> {
-    const response = await api.post<{ invoice: Invoice }>('/invoices', data);
-    return response.data.invoice;
+    console.log('🌐 [invoiceService] Calling API POST /invoices');
+    console.log('  Request data:', data);
+
+    try {
+      const response = await api.post<{ invoice: Invoice }>('/invoices', data);
+      console.log('  API Response:', response);
+      console.log('  Status:', response.status);
+      console.log('  Invoice:', response.data.invoice);
+      return response.data.invoice;
+    } catch (error: any) {
+      console.error('  ❌ API call failed:', error);
+      console.error('  Response data:', error.response?.data);
+      console.error('  Status:', error.response?.status);
+      throw error;
+    }
   }
 
   /**

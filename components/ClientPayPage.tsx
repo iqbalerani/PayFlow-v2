@@ -15,7 +15,7 @@ interface ClientPayPageProps {
 
 const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
   const { showSuccess, showError } = useUIStore();
-  const { address: connectedAddress, isConnected } = useAccount();
+  const { address: connectedAddress, isConnected, chainId } = useAccount();
   const { approveMNEE, hasSufficientBalance, hasSufficientAllowance, formattedBalance } = useMNEEToken();
   const { depositMilestone, releaseMilestone, checkInvoiceExists, hash, isPending, isConfirming, isSuccess } = usePayFlowEscrow();
 
@@ -113,6 +113,16 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
 
     try {
       setTxError('');
+
+      // CRITICAL: Verify user is on Sepolia testnet
+      if (chainId !== 11155111) {
+        throw new Error(
+          `Wrong network! Please switch to Sepolia Testnet in your wallet.\n\n` +
+          `Currently on chain ID: ${chainId}\n` +
+          `Required: Sepolia (11155111)`
+        );
+      }
+
       const milestoneIndex = invoice.milestones.findIndex(m => m.id === selectedMilestone.id);
       const amount = selectedMilestone.amount.toString();
 

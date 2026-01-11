@@ -21,6 +21,7 @@ export interface ApiResponse<T = any> {
 
 // Invoice creation DTO
 export interface CreateInvoiceDTO {
+  id?: string; // Optional: Pre-generated ID from blockchain registration
   title: string;
   description: string;
   clientEmail?: string;

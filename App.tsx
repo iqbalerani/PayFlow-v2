@@ -21,6 +21,7 @@ import SettingsView from './components/SettingsView';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Notifications from './components/Notifications';
+import NetworkIndicator from './components/NetworkIndicator';
 import { useAuthStore } from './src/store/authStore';
 import { useInvoiceStore } from './src/store/invoiceStore';
 
@@ -177,6 +178,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen">
       <Notifications />
+      <NetworkIndicator />
       {renderContent()}
     </div>
   );

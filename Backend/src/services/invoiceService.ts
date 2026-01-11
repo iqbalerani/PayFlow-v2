@@ -17,8 +17,8 @@ export class InvoiceService {
       throw new Error('Milestone amounts must sum to total amount');
     }
 
-    // Generate unique invoice ID
-    const invoiceId = generateInvoiceId();
+    // Use provided ID from blockchain registration, or generate new one
+    const invoiceId = data.id || generateInvoiceId();
     const paymentLink = generatePaymentLink(invoiceId);
 
     // Create invoice with milestones in transaction
@@ -63,10 +63,15 @@ export class InvoiceService {
     const { status, page = 1, limit = 10 } = params;
     const skip = (page - 1) * limit;
 
-    const where = {
+    const where: any = {
       freelancerId,
       ...(status && { status })
     };
+
+    // Exclude CANCELLED invoices by default unless explicitly requested
+    if (!status) {
+      where.status = { not: 'CANCELLED' };
+    }
 
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({

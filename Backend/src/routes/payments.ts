@@ -151,10 +151,11 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response) => {
         break;
     }
 
-    // Get all user's invoices
+    // Get all user's invoices (excluding cancelled)
     const invoices = await prisma.invoice.findMany({
       where: {
-        freelancerId: req.user.id
+        freelancerId: req.user.id,
+        status: { not: 'CANCELLED' }
       },
       include: {
         milestones: true

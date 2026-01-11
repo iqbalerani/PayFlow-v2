@@ -12,7 +12,7 @@ interface InvoiceDetailsProps {
 }
 
 const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) => {
-  const { currentInvoice: invoice, fetchInvoiceById, updateMilestone, isLoading } = useInvoiceStore();
+  const { currentInvoice: invoice, fetchInvoiceById, updateMilestone, cancelInvoice, isLoading } = useInvoiceStore();
   const { showSuccess, showError } = useUIStore();
   const { checkInvoiceExists } = usePayFlowEscrow();
   const [aiMessage, setAiMessage] = useState<string>('');
@@ -20,6 +20,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
   const [requestSent, setRequestSent] = useState<string | null>(null);
   const [paymentRequestSent, setPaymentRequestSent] = useState<string | null>(null);
   const [isRegisteredOnChain, setIsRegisteredOnChain] = useState<boolean | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     fetchInvoiceById(invoiceId);
@@ -28,12 +29,19 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
   // Check blockchain registration status
   useEffect(() => {
     const checkBlockchainStatus = async () => {
-      if (!invoice?.id) return;
+      if (!invoice?.id) {
+        console.log('⚠️ [InvoiceDetails] No invoice ID, skipping blockchain check');
+        return;
+      }
+
+      console.log('🔍 [InvoiceDetails] Checking blockchain status for:', invoice.id);
+
       try {
         const exists = await checkInvoiceExists(invoice.id);
+        console.log('  [InvoiceDetails] Result:', exists ? '✅ EXISTS' : '❌ NOT FOUND');
         setIsRegisteredOnChain(exists);
       } catch (error) {
-        console.error('Error checking blockchain status:', error);
+        console.error('  [InvoiceDetails] Error checking blockchain status:', error);
         setIsRegisteredOnChain(false);
       }
     };
@@ -111,6 +119,19 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     alert('Copied to clipboard!');
   };
 
+  const handleDeleteInvoice = async () => {
+    if (!invoice) return;
+
+    try {
+      await cancelInvoice(invoice.id);
+      showSuccess(`Invoice ${invoice.id} deleted successfully`);
+      setShowDeleteConfirm(false);
+      onBack(); // Navigate back to invoice list
+    } catch (error: any) {
+      showError(error.message || 'Failed to delete invoice');
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -124,6 +145,12 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
           </button>
           <button onClick={() => copyToClipboard(getPublicLink())} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-xl shadow-blue-500/20 flex items-center gap-2">
             <i className="fa-solid fa-link"></i> Copy Client Link
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="px-5 py-2.5 bg-white border border-red-200 rounded-xl text-red-600 font-bold hover:bg-red-50 shadow-sm flex items-center gap-2 transition-all"
+          >
+            <i className="fa-solid fa-trash"></i> Delete Invoice
           </button>
         </div>
       </div>
@@ -375,6 +402,42 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in zoom-in duration-300">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fa-solid fa-trash text-2xl"></i>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-2">Delete Invoice?</h3>
+              <p className="text-slate-500 mb-1">
+                Are you sure you want to delete invoice
+              </p>
+              <p className="font-mono text-sm font-bold text-slate-900 mb-2">{invoice.id}</p>
+              <p className="text-sm text-slate-600 font-semibold mb-6">{invoice.title}</p>
+              <p className="text-xs text-red-600 font-bold mb-6">
+                ⚠️ This action cannot be undone
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteInvoice}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
