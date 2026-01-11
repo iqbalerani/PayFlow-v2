@@ -129,8 +129,25 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 Get your Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey).
 
-- **[types.ts](src/types.ts)** - Core data models and type definitions
-- **[geminiService.ts](src/services/geminiService.ts)** - AI-powered invoice generation
+## 📚 Documentation
+
+### Architecture & Implementation
+- **[CLAUDE.md](CLAUDE.md)** - Development guide for working with this codebase
+- **[AI Architecture](docs/architecture/PAYFLOW_AI_ARCHITECTURE.md)** - AI-powered invoice generation architecture
+- **[Backend Implementation](docs/architecture/BACKEND_IMPLEMENTATION.md)** - Backend API documentation
+- **[Integration Status](docs/architecture/INTEGRATION_STATUS.md)** - Current integration status
+- **[Setup Guide](docs/architecture/SETUP.md)** - Detailed setup instructions
+
+### Deployment
+- **[Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md)** - Smart contract deployment
+- **[Vercel Deployment](docs/deployment/VERCEL_DEPLOYMENT.md)** - Frontend deployment to Vercel
+- **[Local Deployment](docs/deployment/LOCAL_DEPLOYMENT_GUIDE.md)** - Local deployment guide
+- **[Mock MNEE Deployment](docs/deployment/MOCK_MNEE_DEPLOYMENT.md)** - Mock token deployment
+
+### Hackathon
+- **[Hackathon Assessment](docs/hackathon/HACKATHON_ASSESSMENT.md)** - Project roadmap & progress
+- **[Devpost Submission](docs/hackathon/DEVPOST_SUBMISSION.md)** - Hackathon submission details
+- **[Demo Script](docs/hackathon/DEMO_SCRIPT.md)** - Demo presentation script
 
 ## 🛠️ Development
 
