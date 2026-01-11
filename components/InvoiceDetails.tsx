@@ -4,6 +4,7 @@ import { Invoice, InvoiceStatus, MilestoneStatus } from '../types';
 import aiService from '../src/services/aiService';
 import { useInvoiceStore } from '../src/store/invoiceStore';
 import { useUIStore } from '../src/store/uiStore';
+import { usePayFlowEscrow } from '../src/hooks/usePayFlowEscrow';
 
 interface InvoiceDetailsProps {
   invoiceId: string;
@@ -13,14 +14,31 @@ interface InvoiceDetailsProps {
 const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) => {
   const { currentInvoice: invoice, fetchInvoiceById, updateMilestone, isLoading } = useInvoiceStore();
   const { showSuccess, showError } = useUIStore();
+  const { checkInvoiceExists } = usePayFlowEscrow();
   const [aiMessage, setAiMessage] = useState<string>('');
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [requestSent, setRequestSent] = useState<string | null>(null);
   const [paymentRequestSent, setPaymentRequestSent] = useState<string | null>(null);
+  const [isRegisteredOnChain, setIsRegisteredOnChain] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetchInvoiceById(invoiceId);
   }, [invoiceId, fetchInvoiceById]);
+
+  // Check blockchain registration status
+  useEffect(() => {
+    const checkBlockchainStatus = async () => {
+      if (!invoice?.id) return;
+      try {
+        const exists = await checkInvoiceExists(invoice.id);
+        setIsRegisteredOnChain(exists);
+      } catch (error) {
+        console.error('Error checking blockchain status:', error);
+        setIsRegisteredOnChain(false);
+      }
+    };
+    checkBlockchainStatus();
+  }, [invoice?.id, checkInvoiceExists]);
 
   if (isLoading || !invoice) {
     return (
@@ -125,10 +143,22 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
                   </span>
                 </div>
                 <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">{invoice.title}</h1>
-                <p className="text-slate-500 mt-2 flex items-center gap-2 font-medium">
-                  <i className="fa-solid fa-calendar-day text-slate-300"></i>
-                  Created on {new Date(invoice.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </p>
+                <div className="flex items-center gap-3 mt-3 flex-wrap">
+                  <p className="text-slate-500 flex items-center gap-2 font-medium">
+                    <i className="fa-solid fa-calendar-day text-slate-300"></i>
+                    Created on {new Date(invoice.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  {isRegisteredOnChain === true && (
+                    <span className="text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest bg-emerald-100 text-emerald-700 flex items-center gap-1.5">
+                      <i className="fa-solid fa-link text-emerald-600"></i> On Blockchain
+                    </span>
+                  )}
+                  {isRegisteredOnChain === false && (
+                    <span className="text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest bg-red-100 text-red-700 flex items-center gap-1.5">
+                      <i className="fa-solid fa-triangle-exclamation text-red-600"></i> Not Registered
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="text-left md:text-right bg-slate-50 md:bg-transparent p-6 md:p-0 rounded-3xl border border-slate-100 md:border-0">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Invoice Value</p>
@@ -167,13 +197,13 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
                 <div className="space-y-4">
                   {invoice.milestones.map((ms, idx) => (
                     <div key={ms.id} className={`p-6 rounded-3xl border transition-all hover:shadow-md ${
-                      ms.status === MilestoneStatus.RELEASED ? 'bg-green-50/30 border-green-100' : 
+                      ms.status === MilestoneStatus.RELEASED ? 'bg-pink-50/30 border-pink-100' :
                       ms.status === MilestoneStatus.PAID ? 'bg-blue-50/30 border-blue-100' : 'bg-white border-slate-100'
                     }`}>
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div className="flex items-start gap-5">
                           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm ${
-                            ms.status === MilestoneStatus.RELEASED ? 'bg-green-500 text-white' : 
+                            ms.status === MilestoneStatus.RELEASED ? 'bg-pink-500 text-white' :
                             ms.status === MilestoneStatus.PAID ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'
                           }`}>
                             {ms.status === MilestoneStatus.RELEASED ? <i className="fa-solid fa-check"></i> : idx + 1}
@@ -182,11 +212,11 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
                             <p className="font-black text-slate-900 text-lg leading-tight">{ms.title}</p>
                             <div className="flex items-center gap-2 mt-1">
                               <span className={`text-[10px] font-black uppercase tracking-widest ${
-                                ms.status === MilestoneStatus.RELEASED ? 'text-green-600' : 
+                                ms.status === MilestoneStatus.RELEASED ? 'text-pink-600' :
                                 ms.status === MilestoneStatus.PAID ? 'text-blue-600' : 'text-slate-400'
                               }`}>
-                                {ms.status === MilestoneStatus.RELEASED ? `Released on ${new Date(ms.released_at!).toLocaleDateString()}` :
-                                 ms.status === MilestoneStatus.PAID ? 'Locked in Escrow' : 'Awaiting Payment'}
+                                {ms.status === MilestoneStatus.RELEASED ? `PAID on ${new Date(ms.released_at!).toLocaleDateString()}` :
+                                 ms.status === MilestoneStatus.PAID ? 'PAID - Awaiting Release' : 'Awaiting Payment'}
                               </span>
                             </div>
                             {ms.description && <p className="text-xs text-slate-400 mt-2 font-medium">{ms.description}</p>}
@@ -221,6 +251,12 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
                             >
                               {requestSent === ms.id ? 'Request Sent' : 'Request Release'}
                             </button>
+                          )}
+
+                          {ms.status === MilestoneStatus.RELEASED && (
+                            <div className="bg-pink-100 text-pink-600 px-4 py-2 rounded-xl text-[10px] font-black tracking-widest uppercase">
+                              PAID ✓
+                            </div>
                           )}
                         </div>
                       </div>

@@ -16,17 +16,20 @@ export interface InvoicesResponse {
 }
 
 export interface CreateInvoiceData {
+  id?: string; // Optional: pre-generated ID from blockchain creation
   title: string;
   description: string;
   totalAmount: number;
   currency?: string;
   category?: string;
+  clientEmail?: string;
+  clientName?: string;
   milestones: {
     title: string;
     description?: string;
     amount: number;
     percentage: number;
-    index: number;
+    index?: number;
   }[];
 }
 

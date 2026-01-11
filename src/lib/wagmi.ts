@@ -26,8 +26,8 @@ export const config = getDefaultConfig({
   ssr: false, // Not using server-side rendering
 });
 
-// MNEE Token Address (Ethereum Mainnet)
-export const MNEE_TOKEN_ADDRESS = '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF' as const;
+// MNEE Token Address (from environment - Mock MNEE on Sepolia)
+export const MNEE_TOKEN_ADDRESS = (import.meta.env.VITE_MNEE_TOKEN_ADDRESS || '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF') as `0x${string}`;
 
 // PayFlow Escrow Contract Address (will be set after deployment)
 export const PAYFLOW_ESCROW_ADDRESS = (import.meta.env.VITE_PAYFLOW_ESCROW_ADDRESS || '') as `0x${string}`;
@@ -35,12 +35,12 @@ export const PAYFLOW_ESCROW_ADDRESS = (import.meta.env.VITE_PAYFLOW_ESCROW_ADDRE
 // Contract Addresses by Network
 export const CONTRACT_ADDRESSES = {
   [mainnet.id]: {
-    mneeToken: MNEE_TOKEN_ADDRESS,
+    mneeToken: '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF' as `0x${string}`, // Real MNEE on mainnet
     payflowEscrow: PAYFLOW_ESCROW_ADDRESS,
   },
   [sepolia.id]: {
-    // For testnet, use test token if available
-    mneeToken: (import.meta.env.VITE_MNEE_TOKEN_SEPOLIA || MNEE_TOKEN_ADDRESS) as `0x${string}`,
+    // For testnet, use Mock MNEE from environment
+    mneeToken: MNEE_TOKEN_ADDRESS,
     payflowEscrow: PAYFLOW_ESCROW_ADDRESS,
   },
 } as const;

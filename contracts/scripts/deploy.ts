@@ -34,7 +34,7 @@ async function main() {
   console.log(`Contract Address: ${escrowAddress}`);
   console.log(`MNEE Token: ${mneeToken}`);
   console.log(`Platform Wallet: ${PLATFORM_WALLET}`);
-  console.log(`Platform Fee: ${platformFee / 100}%`);
+  console.log(`Platform Fee: ${Number(platformFee) / 100}%`);
   console.log("\n");
 
   console.log("====================================");

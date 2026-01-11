@@ -1,9 +1,15 @@
 
 import React, { useState } from 'react';
+import { useAccount } from 'wagmi';
+import { waitForTransactionReceipt } from 'viem/actions';
+import { createPublicClient, http } from 'viem';
+import { sepolia, mainnet } from 'viem/chains';
 import aiService from '../src/services/aiService';
+import invoiceService from '../src/services/invoiceService';
 import { useInvoiceStore } from '../src/store/invoiceStore';
 import { useAuthStore } from '../src/store/authStore';
 import { useUIStore } from '../src/store/uiStore';
+import { usePayFlowEscrow } from '../src/hooks/usePayFlowEscrow';
 import { Invoice, InvoiceStatus, MilestoneStatus, AppView } from '../types';
 
 interface CreateInvoiceProps {
@@ -14,12 +20,16 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
   const { user } = useAuthStore();
   const { createInvoice } = useInvoiceStore();
   const { showSuccess, showError } = useUIStore();
+  const { address: userAddress, isConnected, chainId } = useAccount();
+  const { createInvoice: createBlockchainInvoice } = usePayFlowEscrow();
+
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<Partial<Invoice> | null>(null);
   const [success, setSuccess] = useState<Invoice | null>(null);
   const [aiMessage, setAiMessage] = useState('');
   const [generatingMsg, setGeneratingMsg] = useState(false);
+  const [blockchainStep, setBlockchainStep] = useState<'idle' | 'submitting' | 'confirming' | 'saving' | 'done'>('idle');
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -39,6 +49,15 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
   const handleConfirm = async () => {
     if (!preview) return;
 
+    // Check wallet connection
+    if (!isConnected || !userAddress) {
+      showError('Please connect your wallet to create an invoice');
+      return;
+    }
+
+    let tempInvoiceId: string | null = null;
+    let blockchainTxHash: string | null = null;
+
     try {
       const invoiceData = {
         title: preview.title!,
@@ -46,6 +65,8 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
         totalAmount: preview.totalAmount!,
         currency: preview.currency || 'MNEE',
         category: preview.category || 'General',
+        ...(preview.client_email && { clientEmail: preview.client_email }),
+        ...(preview.client_name && { clientName: preview.client_name }),
         milestones: preview.milestones?.map((m) => ({
           title: m.title,
           description: m.description || '',
@@ -54,13 +75,72 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
         })) || []
       };
 
-      const createdInvoice = await createInvoice(invoiceData);
+      // Step 1: Generate temporary invoice ID (format: INV-YYYY-XXX)
+      const year = new Date().getFullYear();
+      const random = Math.floor(Math.random() * 1000);
+      tempInvoiceId = `INV-${year}-${random}`;
+
+      // Step 2: Create invoice on BLOCKCHAIN FIRST
+      setBlockchainStep('submitting');
+      const milestoneAmounts = invoiceData.milestones.map(m => m.amount.toString());
+
+      blockchainTxHash = await createBlockchainInvoice(
+        tempInvoiceId,
+        userAddress,
+        milestoneAmounts
+      );
+
+      // Step 3: Wait for ACTUAL blockchain confirmation (not just a timeout!)
+      setBlockchainStep('confirming');
+
+      // Create public client to check transaction status
+      const alchemyKey = import.meta.env.VITE_ALCHEMY_API_KEY;
+      const rpcUrl = chainId === 11155111
+        ? `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`
+        : `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+
+      const publicClient = createPublicClient({
+        chain: chainId === 11155111 ? sepolia : mainnet,
+        transport: http(rpcUrl),
+      });
+
+      // Wait for transaction to be mined and confirmed
+      const receipt = await waitForTransactionReceipt(publicClient, {
+        hash: blockchainTxHash,
+        confirmations: 1, // Wait for at least 1 confirmation
+      });
+
+      // Check if transaction was successful
+      if (receipt.status !== 'success') {
+        throw new Error('Transaction was reverted on the blockchain. Please check your wallet and try again.');
+      }
+
+      // Step 4: ONLY create in database after blockchain success
+      setBlockchainStep('saving');
+      const createdInvoice = await createInvoice({
+        ...invoiceData,
+        id: tempInvoiceId // Use the same ID we registered on blockchain
+      });
+
+      setBlockchainStep('done');
       setSuccess(createdInvoice);
       setPreview(null);
-      showSuccess('Invoice created successfully!');
-    } catch (err) {
+      showSuccess('Invoice created on blockchain successfully!');
+    } catch (err: any) {
       console.error("Error creating invoice:", err);
-      showError("Failed to create invoice. Please try again.");
+      setBlockchainStep('idle');
+
+      // Show user-friendly error messages
+      if (err?.message?.includes('User rejected') || err?.message?.includes('user rejected')) {
+        showError('Transaction rejected. Invoice was not created.');
+      } else if (err?.message?.includes('insufficient')) {
+        showError('Insufficient ETH for gas fees. Please add ETH to your wallet.');
+      } else {
+        showError(err?.message || 'Failed to create invoice on blockchain. Please try again.');
+      }
+
+      // Important: Invoice was NOT created in database, so no cleanup needed
+      // The blockchain transaction either failed or was rejected before DB creation
     }
   };
 
@@ -82,6 +162,37 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onNavigate }) => {
       setGeneratingMsg(false);
     }
   };
+  // Show blockchain creation progress
+  if (blockchainStep !== 'idle' && blockchainStep !== 'done') {
+    return (
+      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-white rounded-3xl p-12 max-w-md w-full mx-4 shadow-2xl border border-slate-200 animate-in zoom-in duration-300">
+          <div className="flex flex-col items-center gap-6">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <div className="text-center">
+              <h3 className="text-2xl font-black text-slate-900 mb-2">
+                {blockchainStep === 'submitting' && 'Submitting Transaction...'}
+                {blockchainStep === 'confirming' && 'Confirming on Blockchain...'}
+                {blockchainStep === 'saving' && 'Saving to Database...'}
+              </h3>
+              <p className="text-slate-500 text-sm">
+                {blockchainStep === 'submitting' && 'Please confirm the transaction in your wallet'}
+                {blockchainStep === 'confirming' && 'Waiting for blockchain confirmation (this may take 10-30 seconds)'}
+                {blockchainStep === 'saving' && 'Almost done! Saving invoice details...'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <i className="fa-solid fa-lock"></i>
+              <span>Secured by Smart Contract</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (success) {
     const publicLink = `${window.location.origin}/#pay/${success.id}`;
     return (

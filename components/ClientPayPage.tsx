@@ -17,7 +17,7 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
   const { showSuccess, showError } = useUIStore();
   const { address: connectedAddress, isConnected } = useAccount();
   const { approveMNEE, hasSufficientBalance, hasSufficientAllowance, formattedBalance } = useMNEEToken();
-  const { depositMilestone, releaseMilestone, hash, isPending, isConfirming, isSuccess } = usePayFlowEscrow();
+  const { depositMilestone, releaseMilestone, checkInvoiceExists, hash, isPending, isConfirming, isSuccess } = usePayFlowEscrow();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,6 +25,7 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
   const [txStep, setTxStep] = useState<'idle' | 'approving' | 'pending' | 'confirming' | 'success' | 'error'>('idle');
   const [isApprovingMode, setIsApprovingMode] = useState(false);
   const [txError, setTxError] = useState<string>('');
+  const [hasRegistered, setHasRegistered] = useState(false); // FIX: Track registration to prevent infinite loop
 
   // Fetch invoice data
   useEffect(() => {
@@ -49,13 +50,14 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
     if (isConnected && connectedAddress && invoice) {
       registerWallet();
     }
-  }, [isConnected, connectedAddress, invoice]);
+  }, [isConnected, connectedAddress, invoice?.id]); // FIX: Only trigger if invoice ID changes, not the whole object
 
   const registerWallet = async () => {
-    if (!connectedAddress || !invoice) return;
+    if (!connectedAddress || !invoice || hasRegistered) return; // FIX: Check if already registered
 
     try {
       await invoiceService.registerClient(invoice.id, connectedAddress);
+      setHasRegistered(true); // FIX: Mark as registered to prevent re-registration
       const updatedInvoice = await invoiceService.getPublicInvoice(invoiceId);
       setInvoice(updatedInvoice);
     } catch (error: any) {
@@ -63,6 +65,8 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
       // Don't show error if already registered
       if (!error?.message?.includes('already assigned')) {
         showError('Failed to register wallet');
+      } else {
+        setHasRegistered(true); // FIX: Already registered = success
       }
     }
   };
@@ -139,12 +143,22 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
 
       } else {
         // Deposit milestone into escrow
-        // Step 1: Check balance
+        // Step 1: Check if invoice exists on blockchain
+        const exists = await checkInvoiceExists(invoice.id);
+        if (!exists) {
+          throw new Error(
+            '❌ This invoice is not registered on the blockchain.\n\n' +
+            'The freelancer needs to recreate this invoice using the latest version of PayFlow. ' +
+            'Please contact the freelancer to create a new invoice.'
+          );
+        }
+
+        // Step 2: Check balance
         if (!hasSufficientBalance(amount)) {
           throw new Error(`Insufficient MNEE balance. You need ${amount} MNEE.`);
         }
 
-        // Step 2: Check/approve allowance
+        // Step 3: Check/approve allowance
         if (!hasSufficientAllowance(amount)) {
           setTxStep('approving');
           const approvalHash = await approveMNEE(amount);
@@ -153,18 +167,35 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
           // Wait for approval confirmation
         }
 
-        // Step 3: Deposit into escrow
+        // Step 4: Deposit into escrow
         setTxStep('pending');
         const txHash = await depositMilestone(invoice.id, milestoneIndex);
 
         setTxStep('confirming');
         // Wait for deposit confirmation
 
-        // Update backend with transaction hash
-        await invoiceService.updateMilestone(invoice.id, milestoneIndex, {
-          status: MilestoneStatus.PAID,
-          txHash: txHash
-        });
+        // Update backend with transaction hash (with retry for rate limiting)
+        let retries = 3;
+        let updated = false;
+
+        while (retries > 0 && !updated) {
+          try {
+            await invoiceService.updateMilestone(invoice.id, milestoneIndex, {
+              status: MilestoneStatus.PAID,
+              txHash: txHash
+            });
+            updated = true;
+          } catch (error: any) {
+            retries--;
+            if (error?.status === 429 && retries > 0) {
+              // Wait 2 seconds before retry if rate limited
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            } else {
+              // Give up after 3 tries or non-429 error
+              throw error;
+            }
+          }
+        }
 
         setTxStep('success');
         showSuccess('Payment successful! Funds are now in escrow.');
@@ -180,7 +211,25 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
 
     } catch (error: any) {
       console.error('Transaction error:', error);
-      const errorMessage = error?.message || error?.shortMessage || 'Transaction failed';
+
+      // Parse error and show user-friendly message
+      let errorMessage = error?.message || error?.shortMessage || 'Transaction failed';
+
+      // Detect specific error types
+      if (errorMessage.includes('User rejected') || errorMessage.includes('user rejected')) {
+        errorMessage = 'Transaction was cancelled. Please try again when ready.';
+      } else if (errorMessage.includes('insufficient')) {
+        errorMessage = 'Insufficient ETH for gas fees. Please add some ETH to your wallet.';
+      } else if (errorMessage.includes('gas limit too high') || errorMessage.includes('transaction gas limit')) {
+        errorMessage =
+          '⚠️ This invoice is not properly registered on the blockchain.\n\n' +
+          'Please contact the freelancer and ask them to recreate the invoice using the latest version of PayFlow.';
+      } else if (errorMessage.includes('Invoice does not exist')) {
+        errorMessage =
+          '❌ Invoice not found on blockchain.\n\n' +
+          'The freelancer needs to recreate this invoice.';
+      }
+
       setTxError(errorMessage);
       setTxStep('error');
       showError(errorMessage);
@@ -246,15 +295,15 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
                   
                   return (
                     <div key={ms.id} className={`p-5 rounded-2xl border transition-all ${
-                      ms.status === MilestoneStatus.RELEASED ? 'bg-green-50/50 border-green-100 opacity-60' : 
-                      ms.status === MilestoneStatus.PAID ? 'bg-blue-50 border-blue-100' : 
+                      ms.status === MilestoneStatus.RELEASED ? 'bg-pink-50 border-pink-100' :
+                      ms.status === MilestoneStatus.PAID ? 'bg-blue-50 border-blue-100' :
                       isLocked ? 'bg-slate-50 border-slate-200 opacity-50' : 'bg-white border-slate-200'
                     }`}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex gap-4">
                           <div className={`mt-1 flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center ${
-                            ms.status === MilestoneStatus.RELEASED ? 'bg-green-500 text-white' : 
-                            ms.status === MilestoneStatus.PAID ? 'bg-blue-500 text-white' : 
+                            ms.status === MilestoneStatus.RELEASED ? 'bg-pink-500 text-white' :
+                            ms.status === MilestoneStatus.PAID ? 'bg-blue-500 text-white' :
                             isLocked ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white'
                           }`}>
                             {ms.status === MilestoneStatus.RELEASED ? <i className="fa-solid fa-check text-[10px]"></i> : (idx + 1)}
@@ -263,12 +312,12 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
                             <p className={`font-bold leading-tight ${isLocked ? 'text-slate-400' : 'text-slate-900'}`}>{ms.title}</p>
                             <div className="flex items-center gap-2 mt-1">
                               <span className={`text-[10px] font-bold uppercase ${
-                                ms.status === MilestoneStatus.RELEASED ? 'text-green-600' : 
-                                ms.status === MilestoneStatus.PAID ? 'text-blue-600' : 
+                                ms.status === MilestoneStatus.RELEASED ? 'text-pink-600' :
+                                ms.status === MilestoneStatus.PAID ? 'text-blue-600' :
                                 isLocked ? 'text-slate-400' : 'text-amber-500'
                               }`}>
-                                {ms.status === MilestoneStatus.RELEASED ? 'Released' : 
-                                 ms.status === MilestoneStatus.PAID ? 'In Escrow' : 
+                                {ms.status === MilestoneStatus.RELEASED ? 'PAID' :
+                                 ms.status === MilestoneStatus.PAID ? 'PAID - In Escrow' :
                                  isLocked ? 'Locked' : 'Awaiting Payment'}
                               </span>
                               <span className="text-[10px] font-bold text-slate-300">•</span>
@@ -287,11 +336,20 @@ const ClientPayPage: React.FC<ClientPayPageProps> = ({ invoiceId }) => {
                         )}
 
                         {ms.status === MilestoneStatus.PAID && (
-                          <button 
+                          <button
                             onClick={() => handleActionClick(ms, 'approve')}
                             className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95"
                           >
                             Approve & Release
+                          </button>
+                        )}
+
+                        {ms.status === MilestoneStatus.RELEASED && (
+                          <button
+                            disabled
+                            className="bg-pink-100 text-pink-600 px-4 py-2 rounded-xl text-xs font-bold cursor-not-allowed opacity-75"
+                          >
+                            PAID ✓
                           </button>
                         )}
 

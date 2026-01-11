@@ -5,11 +5,12 @@ import fetch from 'node-fetch';
 dotenv.config();
 
 // PayFlow Escrow ABI (events only - minimal for listening)
+// NOTE: invoiceId is NOT indexed to preserve the original string value
 const PAYFLOW_ESCROW_ABI = [
-  "event InvoiceCreated(string indexed invoiceId, address indexed freelancer, uint256 totalAmount, uint256 milestoneCount)",
-  "event MilestoneDeposited(string indexed invoiceId, uint256 indexed milestoneIndex, uint256 amount, address indexed payer)",
-  "event MilestoneReleased(string indexed invoiceId, uint256 indexed milestoneIndex, uint256 amount, address indexed recipient)",
-  "event MilestoneRefunded(string indexed invoiceId, uint256 indexed milestoneIndex, uint256 amount, address indexed recipient)"
+  "event InvoiceCreated(string invoiceId, address indexed freelancer, uint256 totalAmount, uint256 milestoneCount)",
+  "event MilestoneDeposited(string invoiceId, uint256 indexed milestoneIndex, uint256 amount, address indexed payer)",
+  "event MilestoneReleased(string invoiceId, uint256 indexed milestoneIndex, uint256 amount, address indexed recipient)",
+  "event MilestoneRefunded(string invoiceId, uint256 indexed milestoneIndex, uint256 amount, address indexed recipient)"
 ];
 
 interface BlockchainEvent {
@@ -167,31 +168,88 @@ export class BlockchainListener {
   /**
    * Fetch past events (for catching up after downtime)
    */
-  async catchUpEvents(fromBlock: number = -10000) {
+  async catchUpEvents(fromBlock: number = -100) {
     console.log('🔄 Catching up on past events...\n');
 
     const currentBlock = await this.provider.getBlockNumber();
-    const startBlock = Math.max(0, currentBlock + fromBlock); // Last 10000 blocks by default
+    const startBlock = Math.max(0, currentBlock + fromBlock);
 
     console.log(`   Scanning blocks ${startBlock} to ${currentBlock}...\n`);
 
-    // Query past events
-    const depositFilter = this.contract.filters.MilestoneDeposited();
-    const releaseFilter = this.contract.filters.MilestoneReleased();
-    const refundFilter = this.contract.filters.MilestoneRefunded();
+    // Alchemy free tier limits eth_getLogs to 10 block range
+    // So we need to chunk the requests
+    const chunkSize = 10;
+    const deposits = [];
+    const releases = [];
+    const refunds = [];
 
-    const [deposits, releases, refunds] = await Promise.all([
-      this.contract.queryFilter(depositFilter, startBlock, currentBlock),
-      this.contract.queryFilter(releaseFilter, startBlock, currentBlock),
-      this.contract.queryFilter(refundFilter, startBlock, currentBlock)
-    ]);
+    for (let i = startBlock; i <= currentBlock; i += chunkSize) {
+      const endBlock = Math.min(i + chunkSize - 1, currentBlock);
+      console.log(`   Querying blocks ${i} to ${endBlock}...`);
 
-    console.log(`   Found ${deposits.length} deposits, ${releases.length} releases, ${refunds.length} refunds\n`);
+      const depositFilter = this.contract.filters.MilestoneDeposited();
+      const releaseFilter = this.contract.filters.MilestoneReleased();
+      const refundFilter = this.contract.filters.MilestoneRefunded();
 
-    // Process past events (you may want to batch these)
-    for (const event of [...deposits, ...releases, ...refunds]) {
-      // Log but don't send webhooks for old events (implement your own logic)
-      console.log(`   Past event: ${event.eventName} - Tx: ${event.transactionHash}`);
+      const [chunkDeposits, chunkReleases, chunkRefunds] = await Promise.all([
+        this.contract.queryFilter(depositFilter, i, endBlock),
+        this.contract.queryFilter(releaseFilter, i, endBlock),
+        this.contract.queryFilter(refundFilter, i, endBlock)
+      ]);
+
+      deposits.push(...chunkDeposits);
+      releases.push(...chunkReleases);
+      refunds.push(...chunkRefunds);
+    }
+
+    console.log(`\n   Found ${deposits.length} deposits, ${releases.length} releases, ${refunds.length} refunds\n`);
+
+    // Process past deposit events
+    for (const event of deposits) {
+      const [invoiceId, milestoneIndex, amount, payer] = event.args as [string, bigint, bigint, string];
+      console.log(`   Processing deposit: ${invoiceId}[${milestoneIndex}]`);
+
+      await this.sendWebhook({
+        event: 'MilestoneDeposited',
+        invoiceId,
+        milestoneIndex: Number(milestoneIndex),
+        amount: ethers.formatEther(amount),
+        wallet: payer,
+        txHash: event.transactionHash,
+        timestamp: Math.floor(Date.now() / 1000)
+      });
+    }
+
+    // Process past release events
+    for (const event of releases) {
+      const [invoiceId, milestoneIndex, amount, recipient] = event.args as [string, bigint, bigint, string];
+      console.log(`   Processing release: ${invoiceId}[${milestoneIndex}]`);
+
+      await this.sendWebhook({
+        event: 'MilestoneReleased',
+        invoiceId,
+        milestoneIndex: Number(milestoneIndex),
+        amount: ethers.formatEther(amount),
+        wallet: recipient,
+        txHash: event.transactionHash,
+        timestamp: Math.floor(Date.now() / 1000)
+      });
+    }
+
+    // Process past refund events
+    for (const event of refunds) {
+      const [invoiceId, milestoneIndex, amount, recipient] = event.args as [string, bigint, bigint, string];
+      console.log(`   Processing refund: ${invoiceId}[${milestoneIndex}]`);
+
+      await this.sendWebhook({
+        event: 'MilestoneRefunded',
+        invoiceId,
+        milestoneIndex: Number(milestoneIndex),
+        amount: ethers.formatEther(amount),
+        wallet: recipient,
+        txHash: event.transactionHash,
+        timestamp: Math.floor(Date.now() / 1000)
+      });
     }
 
     console.log('✅ Catch-up complete\n');

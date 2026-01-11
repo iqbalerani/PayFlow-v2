@@ -43,28 +43,28 @@ contract PayFlowEscrow is ReentrancyGuard, Ownable {
     // ============ Events ============
 
     event InvoiceCreated(
-        string indexed invoiceId,
+        string invoiceId,
         address indexed freelancer,
         uint256 totalAmount,
         uint256 milestoneCount
     );
 
     event MilestoneDeposited(
-        string indexed invoiceId,
+        string invoiceId,
         uint256 indexed milestoneIndex,
         uint256 amount,
         address indexed payer
     );
 
     event MilestoneReleased(
-        string indexed invoiceId,
+        string invoiceId,
         uint256 indexed milestoneIndex,
         uint256 amount,
         address indexed recipient
     );
 
     event MilestoneRefunded(
-        string indexed invoiceId,
+        string invoiceId,
         uint256 indexed milestoneIndex,
         uint256 amount,
         address indexed recipient

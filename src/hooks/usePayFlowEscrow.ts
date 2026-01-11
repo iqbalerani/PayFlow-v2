@@ -110,6 +110,39 @@ export function usePayFlowEscrow() {
     });
   };
 
+  /**
+   * Check if invoice exists on blockchain
+   */
+  const checkInvoiceExists = async (invoiceId: string): Promise<boolean> => {
+    if (!chainId) return false;
+
+    try {
+      const config = getPayFlowEscrowConfig(chainId);
+      const { readContract } = await import('viem/actions');
+      const { createPublicClient, http } = await import('viem');
+      const { sepolia, mainnet } = await import('viem/chains');
+
+      const client = createPublicClient({
+        chain: chainId === 11155111 ? sepolia : mainnet,
+        transport: http(),
+      });
+
+      const result = await client.readContract({
+        address: config.address,
+        abi: config.abi,
+        functionName: 'getInvoice',
+        args: [invoiceId],
+      });
+
+      // getInvoice returns (address freelancer, address client, uint256 milestoneCount, bool exists)
+      // If exists is true, invoice is registered on blockchain
+      return result[3] as boolean;
+    } catch (error) {
+      console.error('Error checking invoice existence:', error);
+      return false;
+    }
+  };
+
   return {
     // Write functions
     createInvoice,
@@ -126,6 +159,7 @@ export function usePayFlowEscrow() {
 
     // Read functions
     getInvoice,
+    checkInvoiceExists,
 
     // User info
     userAddress,
