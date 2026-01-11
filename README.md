@@ -32,6 +32,7 @@ PayFlow uses smart contracts to hold MNEE stablecoin payments in trustless escro
 ### Current Status
 
 **✅ Implemented:**
+
 - AI-powered invoice generation using Google Gemini
 - Professional client message generation
 - Milestone-based invoice creation and management
@@ -40,6 +41,7 @@ PayFlow uses smart contracts to hold MNEE stablecoin payments in trustless escro
 - Responsive design and modern UI
 
 **🚧 In Development:**
+
 - Backend API with PostgreSQL database
 - Smart contract escrow implementation
 - Live wallet integration (RainbowKit + wagmi)
@@ -48,24 +50,28 @@ PayFlow uses smart contracts to hold MNEE stablecoin payments in trustless escro
 ## ✨ Key Features
 
 ### 🔐 Trustless Escrow (Planned)
+
 - **Non-Custodial**: Smart contract holds funds, not a centralized party
 - **Milestone-Based**: Pay and release in stages as work progresses
 - **1% Platform Fee**: Industry-lowest fee automatically deducted on release
 - **Instant Settlement**: Releases happen in seconds, not days
 
 ### 🤖 AI-Powered Automation ✅
+
 - **Smart Invoice Generation**: Describe your project in natural language
 - **Auto-Milestone Creation**: AI suggests optimal payment structure
 - **Client Messaging**: Generate professional outreach emails
 - **Structured Output**: JSON schema validation for consistent data
 
 ### 💎 MNEE Stablecoin Integration (Planned)
+
 - **Price Stability**: Payments in MNEE ($1 = 1 MNEE)
 - **Low Fees**: Ethereum gas costs only, no currency conversion
 - **Global**: Send/receive anywhere in the world instantly
 - **Transparent**: All transactions verifiable on-chain
 
 ### 🎨 Beautiful UX ✅
+
 - **Modern Interface**: Sleek, animated design inspired by Linear/Stripe
 - **Shareable Payment Links**: Send clients a direct payment URL
 - **Mobile Responsive**: Works perfectly on any device
@@ -76,6 +82,7 @@ PayFlow uses smart contracts to hold MNEE stablecoin payments in trustless escro
 ### Tech Stack
 
 **Frontend** (React + TypeScript)
+
 - **Framework**: Vite + React 19
 - **Web3**: viem v2 (RainbowKit integration in progress)
 - **State**: Component state in App.tsx (central state management)
@@ -84,6 +91,7 @@ PayFlow uses smart contracts to hold MNEE stablecoin payments in trustless escro
 - **Routing**: Simple hash-based routing
 
 **Backend & Smart Contracts** (In Development)
+
 - Backend API and database integration planned
 - Smart contract escrow functionality planned
 - Currently using simulated wallet connections and payment operations
@@ -171,15 +179,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Category**: DeFi & Payments
 
 **Prizes Applying For**:
+
 - Best Use of MNEE Stablecoin
 - Best Overall Project
 - Most Innovative DeFi Application
 
 **Links**:
-- **Live Demo**: https://payflow.vercel.app
-- **Demo Video**: https://youtube.com/your-demo
-- **Devpost**: https://devpost.com/software/payflow
-- **Contract (Sepolia)**: https://sepolia.etherscan.io/address/0x...
+
+- **Demo Video**: https://youtu.be/EkadH7I7NbU
+
+- **Contract (Sepolia)**: https://sepolia.etherscan.io/token/0x549e7CF3f5c9b63FCEc3F1a49F3A13583b584d2D?
 - **GitHub**: https://github.com/yourusername/PayFlow
 
 ## 🙏 Acknowledgments
