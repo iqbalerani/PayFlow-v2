@@ -4,11 +4,8 @@
 
 ![PayFlow Banner](https://img.shields.io/badge/PayFlow-v2.0-blue?style=for-the-badge)
 ![MNEE](https://img.shields.io/badge/Powered%20by-MNEE-green?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
 **Secure milestone-based payments for freelancers using MNEE stablecoin escrow**
-
-[Live Demo](https://payflow.vercel.app) • [Documentation](#-documentation) • [Video Demo](#-demo-video)
 
 </div>
 
@@ -132,21 +129,6 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 Get your Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey).
 
-## 📦 Deployment
-
-### Deploy Frontend (Vercel)
-
-The frontend can be deployed to Vercel:
-
-1. Connect your GitHub repository to Vercel
-2. Add environment variable: `GEMINI_API_KEY`
-3. Deploy
-
-**Note**: Backend and smart contract deployment guides are in development.
-
-## 📖 Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** - Development guide for working with this codebase
 - **[types.ts](src/types.ts)** - Core data models and type definitions
 - **[geminiService.ts](src/services/geminiService.ts)** - AI-powered invoice generation
 
@@ -198,8 +180,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Google** - For Gemini AI API
 - **Alchemy** - For reliable RPC infrastructure
 - **Neon** - For serverless PostgreSQL
-- **Vercel** - For seamless frontend hosting
-- **Railway** - For backend deployment
 
 ---
 
